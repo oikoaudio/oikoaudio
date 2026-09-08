@@ -13,6 +13,10 @@ use oiko_dsp::{db_to_gain, note_frequency_with_tuning};
 use spectral_dsp::processing::build_dual_synthesis_window;
 use spectral_dsp::processing::{PreparedSpectrum, smooth_mask_in_db, soften_spectral_edges};
 mod capture;
+mod expression;
+#[cfg(test)]
+mod expression_tests;
+use expression::{MidiExpression, VoiceExpression};
 mod curve_transfer;
 mod display_data;
 mod editor;
@@ -36,7 +40,6 @@ const MOTION_RATE_FRACTION_OF_FRAME_RATE: f32 = 0.32;
 const MAX_VOICES: usize = 128;
 const MAX_MASK_VOICES: usize = MAX_VOICES + MIDI_NOTES;
 pub(crate) const MAX_SPLASH_EVENTS: usize = 24;
-const MIDI_TIMBRE_CC: u8 = 74;
 const VIBRATO_RATE_HZ: f32 = 5.5;
 const VIBRATO_RANGE_SEMITONES: f32 = 0.5;
 const PINNED_NOTE_VELOCITY: f32 = 0.5;
@@ -71,9 +74,12 @@ struct VoiceState {
     velocity: f32,
     level: f32,
     tuning_semitones: f32,
-    pressure: f32,
-    timbre: f32,
+    native_pressure: Option<f32>,
+    native_timbre: Option<f32>,
     volume_gain: f32,
+    pan: f32,
+    expression_amount: f32,
+    expression: VoiceExpression,
     vibrato: f32,
 }
 
@@ -88,9 +94,12 @@ impl VoiceState {
         velocity: 1.0,
         level: 0.0,
         tuning_semitones: 0.0,
-        pressure: 1.0,
-        timbre: 0.5,
+        native_pressure: None,
+        native_timbre: None,
         volume_gain: 1.0,
+        pan: 0.0,
+        expression_amount: 1.0,
+        expression: VoiceExpression::DEFAULT,
         vibrato: 0.0,
     };
 }
@@ -120,6 +129,28 @@ impl SplashState {
     }
 }
 
+struct AudioSlice<'a, 'b> {
+    channels: &'a mut [&'b mut [f32]],
+    start: usize,
+    len: usize,
+}
+impl nice_plug::util::StftInput for AudioSlice<'_, '_> {
+    fn num_samples(&self) -> usize {
+        self.len
+    }
+    fn num_channels(&self) -> usize {
+        self.channels.len()
+    }
+    unsafe fn get_sample_unchecked(&self, channel: usize, sample: usize) -> f32 {
+        self.channels[channel][self.start + sample]
+    }
+}
+impl nice_plug::util::StftInputMut for AudioSlice<'_, '_> {
+    unsafe fn get_sample_unchecked_mut(&mut self, channel: usize, sample: usize) -> &mut f32 {
+        &mut self.channels[channel][self.start + sample]
+    }
+}
+
 pub struct SpectralPlugin {
     params: Arc<SpectralParams>,
     editor_state: Arc<EguiEditorState>,
@@ -132,6 +163,16 @@ pub struct SpectralPlugin {
     plans: Option<[FftPlan; 5]>,
     fft_buffer: Vec<Complex32>,
     mask: Vec<f32>,
+    mask_right: Vec<f32>,
+    target_mask_right: Vec<f32>,
+    softened_mask_right: Vec<f32>,
+    hop_position: usize,
+    terminated: [VoiceState; MAX_VOICES],
+    terminated_count: usize,
+    // Expressions may precede note-on within the same sample group. Retain one
+    // group in bounded storage; overflow keeps the most recent voice addresses.
+    expression_events: [Option<NoteEvent<()>>; MAX_VOICES * 7],
+    expression_event_count: usize,
     target_mask: Vec<f32>,
     softened_mask: Vec<f32>,
     analyzer_accumulator: Vec<f32>,
@@ -148,9 +189,7 @@ pub struct SpectralPlugin {
     note_level_history: [[f32; MIDI_NOTES]; OVERLAP_TIMES],
     note_tunings: [f32; MIDI_NOTES],
     note_timbres: [f32; MIDI_NOTES],
-    channel_pitch_bend_normalized: [f32; 16],
-    channel_pressure: [f32; 16],
-    channel_timbre: [f32; 16],
+    midi_expression: MidiExpression,
     channel_sustain: [bool; 16],
     motion_phase: f32,
     motion_phase_offset: f32,
@@ -181,6 +220,14 @@ impl Default for SpectralPlugin {
             plans: None,
             fft_buffer: Vec::with_capacity(MAX_FFT_SIZE / 2 + 1),
             mask: Vec::with_capacity(MAX_FFT_SIZE / 2 + 1),
+            mask_right: Vec::with_capacity(MAX_FFT_SIZE / 2 + 1),
+            target_mask_right: Vec::with_capacity(MAX_FFT_SIZE / 2 + 1),
+            softened_mask_right: Vec::with_capacity(MAX_FFT_SIZE / 2 + 1),
+            hop_position: 0,
+            terminated: [VoiceState::EMPTY; MAX_VOICES],
+            terminated_count: 0,
+            expression_events: [None; MAX_VOICES * 7],
+            expression_event_count: 0,
             target_mask: Vec::with_capacity(MAX_FFT_SIZE / 2 + 1),
             softened_mask: Vec::with_capacity(MAX_FFT_SIZE / 2 + 1),
             analyzer_accumulator: Vec::with_capacity(MAX_FFT_SIZE / 2 + 1),
@@ -197,9 +244,7 @@ impl Default for SpectralPlugin {
             note_level_history: [[0.0; MIDI_NOTES]; OVERLAP_TIMES],
             note_tunings: [0.0; MIDI_NOTES],
             note_timbres: [0.5; MIDI_NOTES],
-            channel_pitch_bend_normalized: [0.0; 16],
-            channel_pressure: [1.0; 16],
-            channel_timbre: [0.5; 16],
+            midi_expression: MidiExpression::default(),
             channel_sustain: [false; 16],
             motion_phase: 0.0,
             motion_phase_offset: 0.0,
@@ -323,6 +368,7 @@ impl Plugin for SpectralPlugin {
 
     fn reset(&mut self) {
         self.stft.set_block_size(self.quality.size());
+        self.hop_position = 0;
         self.motion_phase = 0.0;
         self.motion_phase_offset = self.params.motion_phase_percent.value() * 0.01;
         self.expression_phase = 0.0;
@@ -345,16 +391,14 @@ impl Plugin for SpectralPlugin {
             .tuning_snapshot
             .publish(&self.tuning, &tuning_name);
         self.capture_held_notes_when_hold_starts();
-        self.consume_note_events(context);
         let (tempo_bpm, transport_position_beats) = {
             let transport = context.transport();
             (
                 transport.tempo.unwrap_or(120.0).clamp(1.0, 999.0) as f32,
-                transport.pos_beats.map(|beats| beats as f32),
+                transport.pos_beats,
             )
         };
         self.analysis_display.store_tempo(tempo_bpm);
-        let tuning = self.tuning;
 
         let quality = self.params.quality.value();
         if quality != self.quality {
@@ -363,7 +407,83 @@ impl Plugin for SpectralPlugin {
             context.set_latency_samples(self.stft.latency_samples());
         }
 
-        let fft_size = quality.size();
+        let samples = buffer.samples();
+        let hop = self.quality.size() / OVERLAP_TIMES;
+        let mut next_event = context.next_event();
+        let mut offset = 0;
+        loop {
+            // Apply all same-sample events before generating any samples at that position.
+            while next_event.is_some_and(|event| event.timing() as usize <= offset) {
+                let event = next_event.take().unwrap();
+                if expression_address(event).is_some() {
+                    self.queue_expression(event);
+                } else {
+                    self.consume_note_event(event);
+                    self.flush_terminated(context, offset as u32);
+                }
+                next_event = context.next_event();
+            }
+            for index in 0..self.expression_event_count {
+                if let Some(event) = self.expression_events[index].take() {
+                    self.consume_note_event(event);
+                }
+            }
+            self.expression_event_count = 0;
+            if offset == samples {
+                break;
+            }
+            let next_time =
+                next_event.map_or(samples, |event| (event.timing() as usize).min(samples));
+            let end = next_time
+                .min(offset + hop - self.hop_position)
+                .max(offset + 1);
+            let elapsed = end - offset;
+            self.advance_expression_time(elapsed);
+            self.flush_terminated(context, end.saturating_sub(1) as u32);
+            self.midi_expression.resolve(
+                &mut self.voices,
+                self.params.pitch_bend_range.value() as f32,
+            );
+            // Frame reference: end of the accumulated hop, independent of host partitions.
+            let frame_position = transport_position_beats.map(|position| {
+                position
+                    + if context.transport().playing {
+                        end as f64 / self.sample_rate as f64 * tempo_bpm as f64 / 60.0
+                    } else {
+                        0.0
+                    }
+            });
+            let mut slice = AudioSlice {
+                channels: buffer.as_slice(),
+                start: offset,
+                len: elapsed,
+            };
+            self.render_audio(&mut slice, tempo_bpm, frame_position);
+            self.hop_position = (self.hop_position + elapsed) % hop;
+            offset = end;
+        }
+
+        let peak = buffer
+            .as_slice()
+            .iter()
+            .flat_map(|channel| channel.iter())
+            .filter(|sample| sample.is_finite())
+            .fold(0.0_f32, |peak, sample| peak.max(sample.abs()));
+        self.analysis_display.store_output_peak(peak);
+        ProcessStatus::Normal
+    }
+}
+
+impl SpectralPlugin {
+    fn render_audio(
+        &mut self,
+        buffer: &mut AudioSlice<'_, '_>,
+        tempo_bpm: f32,
+        transport_position_beats: Option<f64>,
+    ) {
+        let fft_size = self.quality.size();
+        let quality = self.quality;
+        let tuning = self.tuning;
         let plan =
             &mut self.plans.as_mut().expect("FFT plans created on activate")[quality.plan_index()];
         let sample_rate = self.sample_rate;
@@ -375,6 +495,9 @@ impl Plugin for SpectralPlugin {
         let smooth_window_coherent_gain = plan.prepared.smooth_window_coherent_gain;
         let fft_buffer = &mut self.fft_buffer;
         let mask = &mut self.mask;
+        let mask_right = &mut self.mask_right;
+        let target_mask_right = &mut self.target_mask_right;
+        let softened_mask_right = &mut self.softened_mask_right;
         let target_mask = &mut self.target_mask;
         let softened_mask = &mut self.softened_mask;
         let mask_workspace = &plan.prepared.mask_workspace;
@@ -390,7 +513,6 @@ impl Plugin for SpectralPlugin {
         let note_level_history = &mut self.note_level_history;
         let note_tunings = &mut self.note_tunings;
         let note_timbres = &mut self.note_timbres;
-        let channel_pitch_bend_normalized = &self.channel_pitch_bend_normalized;
         let analysis_display = &self.analysis_display;
         let analyzer_accumulator = &mut self.analyzer_accumulator;
         let analyzer_points_db = &mut self.analyzer_points_db;
@@ -405,21 +527,13 @@ impl Plugin for SpectralPlugin {
         let transform_gain = (fft_size as f32).sqrt().recip();
         let mut frame_output_gain = db_to_gain(params.output_gain_db.value());
         let mut frame_smooth_enabled = params.smooth_spectral.value();
-        let mut sync_frame_offset_beats = 0.0_f32;
 
         self.stft
             .process_overlap_add(buffer, OVERLAP_TIMES, |channel_index, real_buffer| {
                 if channel_index == 0 {
                     frame_smooth_enabled = params.smooth_spectral.value();
                     analyzer_accumulator.fill(0.0);
-                    frame_output_gain =
-                        db_to_gain(params.output_gain_db.smoothed.next_step(frame_samples));
-                    advance_voices(
-                        voices,
-                        frame_seconds,
-                        params.note_attack_ms.value(),
-                        params.note_release_ms.value(),
-                    );
+                    frame_output_gain = db_to_gain(params.output_gain_db.smoothed.previous_value());
                     advance_pinned_notes(
                         pinned_note_levels,
                         &params.pinned_notes,
@@ -432,12 +546,10 @@ impl Plugin for SpectralPlugin {
                     prepare_mask_voices(
                         voices,
                         mask_voices,
-                        channel_pitch_bend_normalized,
-                        params.pitch_bend_range.value() as f32,
                         params
                             .velocity_sensitivity_percent
                             .smoothed
-                            .next_step(frame_samples)
+                            .previous_value()
                             * 0.01,
                         *expression_phase,
                         note_levels,
@@ -456,20 +568,13 @@ impl Plugin for SpectralPlugin {
                         base_curve,
                         manual_curve,
                         curve_tilt_octaves,
-                        params.curve_depth_percent.smoothed.next_step(frame_samples),
-                        params
-                            .curve_tilt_db_per_octave
-                            .smoothed
-                            .next_step(frame_samples),
-                        params
-                            .curve_shift_semitones
-                            .smoothed
-                            .next_step(frame_samples),
+                        params.curve_depth_percent.smoothed.previous_value(),
+                        params.curve_tilt_db_per_octave.smoothed.previous_value(),
+                        params.curve_shift_semitones.smoothed.previous_value(),
                     );
                     let direction = params.motion_direction.value();
                     let sync = params.motion_sync.value();
                     let division = params.motion_rate_division.value();
-                    let beats_per_second = tempo_bpm / 60.0;
                     let requested_motion_rate_hz = if sync {
                         division.rate_hz(tempo_bpm)
                     } else {
@@ -481,9 +586,8 @@ impl Plugin for SpectralPlugin {
                         if let Some(position_beats) = transport_position_beats {
                             let rate_ratio =
                                 effective_motion_rate_hz / requested_motion_rate_hz.max(0.01);
-                            (((position_beats + sync_frame_offset_beats) / division.beats())
-                                * rate_ratio)
-                                .rem_euclid(1.0)
+                            ((position_beats / division.beats() as f64) * rate_ratio as f64)
+                                .rem_euclid(1.0) as f32
                         } else {
                             *motion_phase = (*motion_phase
                                 + effective_motion_rate_hz * frame_seconds)
@@ -495,7 +599,6 @@ impl Plugin for SpectralPlugin {
                             .rem_euclid(1.0);
                         *motion_phase
                     };
-                    sync_frame_offset_beats += beats_per_second * frame_seconds;
                     *motion_phase_offset = smooth_circular_phase(
                         *motion_phase_offset,
                         params.motion_phase_percent.value() * 0.01,
@@ -505,29 +608,41 @@ impl Plugin for SpectralPlugin {
                     let displayed_phase = (directed_motion_phase(raw_phase, direction)
                         + *motion_phase_offset)
                         .rem_euclid(1.0);
-                    let note_depth_db = params.note_depth_db.smoothed.next_step(frame_samples);
-                    let motion_depth_db = params.motion_depth_db.smoothed.next_step(frame_samples);
-                    build_mask_with_voices_precomputed(
-                        target_mask,
-                        manual_curve,
-                        mask_voices,
-                        MaskConfig {
-                            sample_rate,
-                            fft_size,
-                            note_depth_db,
-                            note_layer_enabled: true,
-                            width_cents: params.width_cents.value(),
-                            partials: params.partials.value() as usize,
-                            harmonic_rolloff_db_per_octave: params.harmonic_rolloff_db.value(),
-                            motion: MotionConfig {
-                                shape: params.motion_shape.value().into(),
-                                depth_db: motion_depth_db,
-                                phase: displayed_phase,
-                                size_octaves: params.motion_size_octaves.value(),
-                            },
+                    let note_depth_db = params.note_depth_db.smoothed.previous_value();
+                    let motion_depth_db = params.motion_depth_db.smoothed.previous_value();
+                    let mask_config = MaskConfig {
+                        sample_rate,
+                        fft_size,
+                        note_depth_db,
+                        note_layer_enabled: true,
+                        width_cents: params.width_cents.value(),
+                        partials: params.partials.value() as usize,
+                        harmonic_rolloff_db_per_octave: params.harmonic_rolloff_db.value(),
+                        motion: MotionConfig {
+                            shape: params.motion_shape.value().into(),
+                            depth_db: motion_depth_db,
+                            phase: displayed_phase,
+                            size_octaves: params.motion_size_octaves.value(),
                         },
-                        mask_workspace,
-                    );
+                    };
+                    if num_channels == 2 {
+                        spectral_dsp::build_stereo_masks_with_voices_precomputed(
+                            target_mask,
+                            target_mask_right,
+                            manual_curve,
+                            mask_voices,
+                            mask_config,
+                            mask_workspace,
+                        );
+                    } else {
+                        build_mask_with_voices_precomputed(
+                            target_mask,
+                            manual_curve,
+                            mask_voices,
+                            mask_config,
+                            mask_workspace,
+                        );
+                    }
                     let motion_shape = params.motion_shape.value();
                     let splash_events = if motion_shape == SpectralMotionShape::Splash {
                         advance_splashes(splash_states, frame_seconds, effective_motion_rate_hz);
@@ -546,14 +661,25 @@ impl Plugin for SpectralPlugin {
                                 size_octaves,
                                 &splash_events,
                             );
-                            *gain *= db_to_gain(-attenuation);
+                            let attenuation_gain = db_to_gain(-attenuation);
+                            *gain *= attenuation_gain;
+                            if num_channels == 2 {
+                                target_mask_right[bin] *= attenuation_gain;
+                            }
                         }
                     }
                     if frame_smooth_enabled {
                         soften_spectral_edges(target_mask, softened_mask);
                         smooth_mask_in_db(mask, softened_mask, frame_seconds);
+                        if num_channels == 2 {
+                            soften_spectral_edges(target_mask_right, softened_mask_right);
+                            smooth_mask_in_db(mask_right, softened_mask_right, frame_seconds);
+                        }
                     } else {
                         mask.copy_from_slice(target_mask);
+                        if num_channels == 2 {
+                            mask_right.copy_from_slice(target_mask_right);
+                        }
                     }
                     analysis_display.store_notes(displayed_note_levels, note_tunings, note_timbres);
                     analysis_display.store_motion_phase(displayed_phase);
@@ -595,7 +721,11 @@ impl Plugin for SpectralPlugin {
                         &analysis_display.capture,
                     );
                 }
-                for (bin, gain) in fft_buffer.iter_mut().zip(mask.iter()) {
+                for (bin, gain) in fft_buffer.iter_mut().zip(if channel_index == 0 {
+                    mask.iter()
+                } else {
+                    mask_right.iter()
+                }) {
                     *bin *= *gain;
                 }
                 plan.inverse
@@ -611,19 +741,49 @@ impl Plugin for SpectralPlugin {
                     *sample *= window_sample * synthesis_gain * frame_output_gain;
                 }
             });
-
-        let peak = buffer
-            .as_slice()
-            .iter()
-            .flat_map(|channel| channel.iter())
-            .filter(|sample| sample.is_finite())
-            .fold(0.0_f32, |peak, sample| peak.max(sample.abs()));
-        self.analysis_display.store_output_peak(peak);
-        ProcessStatus::Normal
     }
-}
 
-impl SpectralPlugin {
+    fn advance_expression_time(&mut self, samples: usize) {
+        let elapsed = samples as f32 / self.sample_rate;
+        for voice in &mut self.voices {
+            let previous = *voice;
+            advance_voices(
+                std::slice::from_mut(voice),
+                elapsed,
+                self.params.note_attack_ms.value(),
+                self.params.note_release_ms.value(),
+            );
+            if previous.occupied && !voice.occupied {
+                self.terminated[self.terminated_count] = previous;
+                self.terminated_count += 1;
+            }
+        }
+        let p = &self.params;
+        p.output_gain_db.smoothed.next_step(samples as u32);
+        p.velocity_sensitivity_percent
+            .smoothed
+            .next_step(samples as u32);
+        p.curve_depth_percent.smoothed.next_step(samples as u32);
+        p.curve_tilt_db_per_octave
+            .smoothed
+            .next_step(samples as u32);
+        p.curve_shift_semitones.smoothed.next_step(samples as u32);
+        p.note_depth_db.smoothed.next_step(samples as u32);
+        p.motion_depth_db.smoothed.next_step(samples as u32);
+    }
+
+    fn flush_terminated(&mut self, context: &mut impl ProcessContext<Self>, timing: u32) {
+        for voice in &self.terminated[..self.terminated_count] {
+            context.send_event(NoteEvent::VoiceTerminated {
+                timing,
+                voice_id: voice.voice_id,
+                channel: voice.channel,
+                note: voice.note,
+            });
+        }
+        self.terminated_count = 0;
+    }
+
     fn capture_held_notes_when_hold_starts(&mut self) {
         let hold_enabled = self.params.pinned_notes.capture_incoming();
         if hold_enabled && !self.hold_was_enabled {
@@ -638,6 +798,10 @@ impl SpectralPlugin {
 
     fn resize_for_fft(&mut self, fft_size: usize) {
         self.stft.set_block_size(fft_size);
+        self.hop_position = 0;
+        self.mask_right.resize(fft_size / 2 + 1, 1.0);
+        self.target_mask_right.resize(fft_size / 2 + 1, 1.0);
+        self.softened_mask_right.resize(fft_size / 2 + 1, 1.0);
         self.fft_buffer
             .resize(fft_size / 2 + 1, Complex32::default());
         self.mask.resize(fft_size / 2 + 1, 1.0);
@@ -648,156 +812,194 @@ impl SpectralPlugin {
         self.displayed_note_levels.fill(0.0);
     }
 
-    fn consume_note_events(&mut self, context: &mut impl ProcessContext<Self>) {
-        while let Some(event) = context.next_event() {
-            match event {
-                NoteEvent::NoteOn {
-                    voice_id,
-                    channel,
-                    note,
-                    velocity,
-                    ..
-                } if velocity > 0.0 => {
-                    self.trigger_splash(channel, note, velocity);
-                    self.start_voice(voice_id, channel, note, velocity);
-                }
-                NoteEvent::NoteOn {
-                    voice_id,
-                    channel,
-                    note,
-                    ..
-                }
-                | NoteEvent::NoteOff {
-                    voice_id,
-                    channel,
-                    note,
-                    ..
-                } => self.release_voice(voice_id, channel, note),
-                NoteEvent::Choke {
-                    voice_id,
-                    channel,
-                    note,
-                    ..
-                } => self.choke_voice(voice_id, channel, note),
-                NoteEvent::PolyTuning {
-                    voice_id,
-                    channel,
-                    note,
-                    tuning,
-                    ..
-                } => {
-                    for voice in &mut self.voices {
-                        if voice_matches(voice, voice_id, channel, note) {
-                            voice.tuning_semitones = tuning;
-                        }
-                    }
-                }
-                NoteEvent::PolyPressure {
-                    voice_id,
-                    channel,
-                    note,
-                    pressure,
-                    ..
-                } => {
-                    for voice in &mut self.voices {
-                        if voice_matches(voice, voice_id, channel, note) {
-                            voice.pressure = pressure.clamp(0.0, 1.0);
-                        }
-                    }
-                }
-                NoteEvent::PolyVolume {
-                    voice_id,
-                    channel,
-                    note,
-                    gain,
-                    ..
-                } => {
-                    for voice in &mut self.voices {
-                        if voice_matches(voice, voice_id, channel, note) {
-                            voice.volume_gain = gain.max(0.0);
-                        }
-                    }
-                }
-                NoteEvent::PolyVibrato {
-                    voice_id,
-                    channel,
-                    note,
-                    vibrato,
-                    ..
-                } => {
-                    for voice in &mut self.voices {
-                        if voice_matches(voice, voice_id, channel, note) {
-                            voice.vibrato = vibrato.clamp(0.0, 1.0);
-                        }
-                    }
-                }
-                NoteEvent::PolyBrightness {
-                    voice_id,
-                    channel,
-                    note,
-                    brightness,
-                    ..
-                } => {
-                    for voice in &mut self.voices {
-                        if voice_matches(voice, voice_id, channel, note) {
-                            voice.timbre = brightness.clamp(0.0, 1.0);
-                        }
-                    }
-                }
-                NoteEvent::PolyExpression {
-                    voice_id,
-                    channel,
-                    note,
-                    expression,
-                    ..
-                } => {
-                    // NICE-PLUG's VST3 bridge currently swaps the predefined
-                    // Brightness and Expression event variants. Treat both as
-                    // timbre so the same physical gesture works in CLAP and
-                    // VST3 hosts.
-                    for voice in &mut self.voices {
-                        if voice_matches(voice, voice_id, channel, note) {
-                            voice.timbre = expression.clamp(0.0, 1.0);
-                        }
-                    }
-                }
-                NoteEvent::MidiPitchBend { channel, value, .. } => {
-                    self.channel_pitch_bend_normalized[channel as usize] =
-                        (value.clamp(0.0, 1.0) - 0.5) * 2.0;
-                }
-                NoteEvent::MidiChannelPressure {
-                    channel, pressure, ..
-                } => {
-                    let pressure = pressure.clamp(0.0, 1.0);
-                    self.channel_pressure[channel as usize] = pressure;
-                    for voice in &mut self.voices {
-                        if voice.occupied && voice.channel == channel {
-                            voice.pressure = pressure;
-                        }
-                    }
-                }
-                NoteEvent::MidiCC {
-                    channel,
-                    cc: 64,
-                    value,
-                    ..
-                } => self.set_sustain(channel, value >= 0.5),
-                NoteEvent::MidiCC {
-                    channel,
-                    cc: MIDI_TIMBRE_CC,
-                    value,
-                    ..
-                } => {
-                    let timbre = value.clamp(0.0, 1.0);
-                    self.channel_timbre[channel as usize] = timbre;
-                    for voice in &mut self.voices {
-                        if voice.occupied && voice.channel == channel {
-                            voice.timbre = timbre;
-                        }
-                    }
-                }
-                _ => {}
+    fn queue_expression(&mut self, event: NoteEvent<()>) {
+        // Keep the latest value per address/type, in arrival order relative to
+        // wildcard and more specific updates. The bound matches voice capacity
+        // times the seven standardized dimensions. On overflow drop the oldest.
+        let duplicate = self.expression_events[..self.expression_event_count]
+            .iter()
+            .position(|previous| {
+                previous.is_some_and(|previous| {
+                    expression_address(previous) == expression_address(event)
+                        && std::mem::discriminant(&previous) == std::mem::discriminant(&event)
+                })
+            });
+        let remove = duplicate
+            .or_else(|| (self.expression_event_count == self.expression_events.len()).then_some(0));
+        if let Some(index) = remove {
+            self.expression_events
+                .copy_within(index + 1..self.expression_event_count, index);
+            self.expression_event_count -= 1;
+        }
+        self.expression_events[self.expression_event_count] = Some(event);
+        self.expression_event_count += 1;
+    }
+
+    fn consume_note_event(&mut self, event: NoteEvent<()>) {
+        match event {
+            NoteEvent::NoteOn {
+                voice_id,
+                channel,
+                note,
+                velocity,
+                ..
+            } if channel < 16 && note < 128 && velocity.is_finite() => {
+                self.trigger_splash(channel, note, velocity);
+                self.start_voice(voice_id, channel, note, velocity);
             }
+            NoteEvent::NoteOff {
+                voice_id,
+                channel,
+                note,
+                ..
+            } => self.release_voice(voice_id, channel, note),
+            NoteEvent::Choke {
+                voice_id,
+                channel,
+                note,
+                ..
+            } => self.choke_voice(voice_id, channel, note),
+            NoteEvent::PolyTuning {
+                voice_id,
+                channel,
+                note,
+                tuning,
+                ..
+            } => {
+                for voice in &mut self.voices {
+                    if voice_matches(voice, voice_id, channel, note) && tuning.is_finite() {
+                        voice.tuning_semitones = tuning.clamp(-120.0, 120.0);
+                    }
+                }
+            }
+            NoteEvent::PolyPressure {
+                voice_id,
+                channel,
+                note,
+                pressure,
+                ..
+            } => {
+                for voice in &mut self.voices {
+                    if voice_matches(voice, voice_id, channel, note) && pressure.is_finite() {
+                        voice.native_pressure = Some(pressure.clamp(0.0, 1.0));
+                    }
+                }
+            }
+            NoteEvent::PolyVolume {
+                voice_id,
+                channel,
+                note,
+                gain,
+                ..
+            } => {
+                for voice in &mut self.voices {
+                    if voice_matches(voice, voice_id, channel, note) && gain.is_finite() {
+                        voice.volume_gain = gain.clamp(0.0, 4.0);
+                    }
+                }
+            }
+            NoteEvent::PolyVibrato {
+                voice_id,
+                channel,
+                note,
+                vibrato,
+                ..
+            } => {
+                for voice in &mut self.voices {
+                    if voice_matches(voice, voice_id, channel, note) && vibrato.is_finite() {
+                        voice.vibrato = vibrato.clamp(0.0, 1.0);
+                    }
+                }
+            }
+            NoteEvent::PolyBrightness {
+                voice_id,
+                channel,
+                note,
+                brightness,
+                ..
+            } => {
+                for voice in &mut self.voices {
+                    if voice_matches(voice, voice_id, channel, note) && brightness.is_finite() {
+                        voice.native_timbre = Some(brightness.clamp(0.0, 1.0));
+                    }
+                }
+            }
+            NoteEvent::PolyExpression {
+                voice_id,
+                channel,
+                note,
+                expression,
+                ..
+            } => {
+                for voice in &mut self.voices {
+                    if voice_matches(voice, voice_id, channel, note) && expression.is_finite() {
+                        voice.expression_amount = expression.clamp(0.0, 1.0);
+                    }
+                }
+            }
+            NoteEvent::PolyPan {
+                voice_id,
+                channel,
+                note,
+                pan,
+                ..
+            } => {
+                if pan.is_finite() {
+                    for voice in &mut self.voices {
+                        if voice_matches(voice, voice_id, channel, note) {
+                            voice.pan = pan.clamp(-1.0, 1.0);
+                        }
+                    }
+                }
+            }
+            NoteEvent::MidiPitchBend { channel, value, .. } => {
+                self.midi_expression.pitch_bend(channel, value)
+            }
+            NoteEvent::MidiChannelPressure {
+                channel, pressure, ..
+            } => self.midi_expression.pressure(channel, pressure),
+            NoteEvent::MidiCC {
+                channel, cc, value, ..
+            } if channel < 16 && value.is_finite() => {
+                let old_zones: [Option<u8>; 16] =
+                    std::array::from_fn(|c| self.midi_expression.zone_for(c as u8));
+                let member = self.midi_expression.master_for(channel).is_some();
+                match cc {
+                    64 if !member => self.set_sustain(channel, value >= 0.5),
+                    120 | 123 if !member => {
+                        for affected in 0..16 {
+                            if affected == channel
+                                || self.midi_expression.master_for(affected) == Some(channel)
+                            {
+                                if cc == 120 {
+                                    self.choke_voice(None, affected, u8::MAX);
+                                } else {
+                                    self.release_voice(None, affected, u8::MAX);
+                                }
+                            }
+                        }
+                    }
+                    121 if !member => {
+                        self.set_sustain(channel, false);
+                        for affected in 0..16 {
+                            if affected == channel
+                                || self.midi_expression.master_for(affected) == Some(channel)
+                            {
+                                self.midi_expression.cc(affected, cc, value);
+                            }
+                        }
+                    }
+                    64 | 120 | 121 | 123 => {}
+                    _ => self.midi_expression.cc(channel, cc, value),
+                }
+                for (affected, old_zone) in old_zones.into_iter().enumerate() {
+                    if old_zone != self.midi_expression.zone_for(affected as u8) {
+                        self.choke_voice(None, affected as u8, u8::MAX);
+                        self.channel_sustain[affected] = false;
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
@@ -820,6 +1022,10 @@ impl SpectralPlugin {
                     .map(|(index, _)| index)
                     .unwrap_or(0)
             });
+        if self.voices[index].occupied {
+            self.terminated[self.terminated_count] = self.voices[index];
+            self.terminated_count += 1;
+        }
         self.voices[index] = VoiceState {
             occupied: true,
             held: true,
@@ -827,8 +1033,6 @@ impl SpectralPlugin {
             channel,
             note,
             velocity: velocity.clamp(0.0, 1.0),
-            pressure: self.channel_pressure[channel as usize],
-            timbre: self.channel_timbre[channel as usize],
             ..VoiceState::EMPTY
         };
     }
@@ -837,8 +1041,9 @@ impl SpectralPlugin {
         if self.params.motion_shape.value() != SpectralMotionShape::Splash {
             return;
         }
-        let tuning = self.channel_pitch_bend_normalized[channel as usize]
-            * self.params.pitch_bend_range.value() as f32
+        let tuning = self
+            .midi_expression
+            .bend(channel, self.params.pitch_bend_range.value() as f32)
             + self.tuning.offset(note as usize);
         if !self.tuning.mapped[note as usize] {
             return;
@@ -866,23 +1071,24 @@ impl SpectralPlugin {
     }
 
     fn release_voice(&mut self, voice_id: Option<i32>, channel: u8, note: u8) {
-        if let Some(voice) = self
-            .voices
-            .iter_mut()
-            .rev()
-            .find(|voice| voice.held && voice_matches(voice, voice_id, channel, note))
-        {
-            voice.held = false;
-            voice.sustained = self.channel_sustain[channel as usize];
+        for voice in &mut self.voices {
+            if voice.held && voice_matches(voice, voice_id, channel, note) {
+                voice.held = false;
+                voice.sustained = self.channel_sustain[voice.channel as usize];
+            }
         }
     }
 
     fn set_sustain(&mut self, channel: u8, down: bool) {
-        self.channel_sustain[channel as usize] = down;
-        if !down {
-            for voice in &mut self.voices {
-                if voice.channel == channel {
-                    voice.sustained = false;
+        for affected in 0..16 {
+            if affected == channel || self.midi_expression.master_for(affected) == Some(channel) {
+                self.channel_sustain[affected as usize] = down;
+                if !down {
+                    for voice in &mut self.voices {
+                        if voice.channel == affected {
+                            voice.sustained = false;
+                        }
+                    }
                 }
             }
         }
@@ -891,6 +1097,8 @@ impl SpectralPlugin {
     fn choke_voice(&mut self, voice_id: Option<i32>, channel: u8, note: u8) {
         for voice in &mut self.voices {
             if voice_matches(voice, voice_id, channel, note) {
+                self.terminated[self.terminated_count] = *voice;
+                self.terminated_count += 1;
                 *voice = VoiceState::EMPTY;
             }
         }
@@ -906,9 +1114,10 @@ impl SpectralPlugin {
         self.note_level_history.fill([0.0; MIDI_NOTES]);
         self.note_tunings.fill(0.0);
         self.note_timbres.fill(0.5);
-        self.channel_pitch_bend_normalized.fill(0.0);
-        self.channel_pressure.fill(1.0);
-        self.channel_timbre.fill(0.5);
+        self.midi_expression = MidiExpression::default();
+        self.terminated_count = 0;
+        self.expression_events.fill(None);
+        self.expression_event_count = 0;
         self.channel_sustain.fill(false);
         self.analysis_display.clear();
     }
@@ -926,10 +1135,58 @@ fn advance_splashes(splashes: &mut [SplashState], elapsed_seconds: f32, rate_hz:
     }
 }
 
+fn expression_address(event: NoteEvent<()>) -> Option<(Option<i32>, u8, u8)> {
+    match event {
+        NoteEvent::PolyTuning {
+            voice_id,
+            channel,
+            note,
+            ..
+        }
+        | NoteEvent::PolyVolume {
+            voice_id,
+            channel,
+            note,
+            ..
+        }
+        | NoteEvent::PolyPan {
+            voice_id,
+            channel,
+            note,
+            ..
+        }
+        | NoteEvent::PolyPressure {
+            voice_id,
+            channel,
+            note,
+            ..
+        }
+        | NoteEvent::PolyBrightness {
+            voice_id,
+            channel,
+            note,
+            ..
+        }
+        | NoteEvent::PolyExpression {
+            voice_id,
+            channel,
+            note,
+            ..
+        }
+        | NoteEvent::PolyVibrato {
+            voice_id,
+            channel,
+            note,
+            ..
+        } => Some((voice_id, channel, note)),
+        _ => None,
+    }
+}
+
 fn voice_matches(voice: &VoiceState, voice_id: Option<i32>, channel: u8, note: u8) -> bool {
     voice.occupied
-        && voice.channel == channel
-        && voice.note == note
+        && (channel == u8::MAX || voice.channel == channel)
+        && (note == u8::MAX || voice.note == note)
         && voice_id.is_none_or(|id| voice.voice_id == Some(id))
 }
 
@@ -985,8 +1242,6 @@ fn advance_pinned_notes(
 fn prepare_mask_voices(
     voices: &[VoiceState],
     mask_voices: &mut [MaskVoice],
-    channel_pitch_bend_normalized: &[f32; 16],
-    pitch_bend_range: f32,
     velocity_sensitivity: f32,
     expression_phase: f32,
     note_levels: &mut [f32; MIDI_NOTES],
@@ -1006,8 +1261,7 @@ fn prepare_mask_voices(
             continue;
         }
         let tuning = mts.offset(source.note as usize)
-            + source.tuning_semitones
-            + channel_pitch_bend_normalized[source.channel as usize] * pitch_bend_range
+            + source.expression.tuning_semitones
             + vibrato_wave * source.vibrato * VIBRATO_RANGE_SEMITONES;
         let velocity_gain = effective_velocity(source.velocity, velocity_sensitivity);
         *target = MaskVoice {
@@ -1018,20 +1272,22 @@ fn prepare_mask_voices(
                 0.0
             },
             tuning_semitones: tuning,
-            pressure: source.pressure,
-            timbre: source.timbre,
-            volume_gain: source.volume_gain * velocity_gain,
+            pressure: source.expression.pressure,
+            timbre: source.expression.timbre,
+            volume_gain: velocity_gain,
+            expression_gain: source.expression.gain,
+            pan: source.expression.pan,
         };
 
         let display_level = target.level
-            * source.volume_gain
+            * source.expression.gain
             * velocity_gain
-            * (0.35 + 0.65 * source.pressure.clamp(0.0, 1.0));
+            * (0.35 + 0.65 * source.expression.pressure.clamp(0.0, 1.0));
         let note = source.note as usize;
         if display_level > note_levels[note] {
             note_levels[note] = display_level;
             note_tunings[note] = tuning;
-            note_timbres[note] = source.timbre;
+            note_timbres[note] = source.expression.timbre;
         }
     }
     for (note, (level, target)) in pinned_note_levels
@@ -1151,6 +1407,11 @@ fn smooth_circular_phase(current: f32, target: f32, seconds: f32, smoothing_seco
 }
 
 impl ClapPlugin for SpectralPlugin {
+    const CLAP_SUPPORTS_MPE: bool = true;
+    const CLAP_POLY_MODULATION_CONFIG: Option<PolyModulationConfig> = Some(PolyModulationConfig {
+        max_voice_capacity: MAX_VOICES as u32,
+        supports_overlapping_voices: true,
+    });
     const CLAP_ID: &'static str = "com.oikoaudio.weft";
     const CLAP_DESCRIPTION: Option<&'static str> = Some("Drawable and MIDI-playable spectral mask");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);

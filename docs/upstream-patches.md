@@ -25,7 +25,7 @@ A local patch is not necessarily an upstream bug fix. Distinguish reproduced fai
 
 The NicePlug patch also repairs the VST3 Brightness/Expression swap, supplies expression-specific defaults, forwards note-on tuning in semitones, replaces duplicate note-ID cache entries, clears that cache on reset, and forwards ID-only expressions after its bounded channel/key cache wraps. These are maintained local changes, not claims of acceptance or reproduction against current upstream main. `NOTE_ADDRESS_WILDCARD` documents the existing unsigned representation of CLAP's signed wildcard. CLAP output restores wildcard channel/key values to −1, input validates the single-port address before narrowing, and the new `ClapPlugin::CLAP_SUPPORTS_MPE` flag advertises MPE only for opted-in consumers. Existing plugins retain their default dialects. NicePlug core also exports its STFT input traits so a product can use bounded buffer views without allocation; this is an API extension.
 
-`vendor/nice-plug/tests/note_expressions.rs` covers the actual CLAP entry point and the VST3 expression translator. `scripts/check_workspace.py --test` runs it alongside the existing timing and state-stream harnesses. Native Bitwig routing is not established by these framework tests.
+`vendor/nice-plug/tests/note_expressions.rs` covers the actual CLAP entry point and the VST3 expression translator. `scripts/check_workspace.py --test` runs it alongside the existing timing and state-stream harnesses. Weft's product tests cover common expression state, active-note changes, same-sample ordering, wildcard/overlap lifecycle, MPE configuration, stereo spectral contributions and process allocation guards. Native Bitwig routing is not established by these tests.
 
 ## Packaging differences
 

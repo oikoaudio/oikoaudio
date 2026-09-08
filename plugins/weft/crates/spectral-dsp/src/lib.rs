@@ -20,7 +20,12 @@ pub struct MaskVoice {
     pub tuning_semitones: f32,
     pub pressure: f32,
     pub timbre: f32,
+    /// Base strength (including velocity), bounded to openness before expression.
     pub volume_gain: f32,
+    /// Linear gain of the note-opened component, independent of the background floor.
+    pub expression_gain: f32,
+    /// Stereo placement, -1 left through 0 center to +1 right. Ignored in mono.
+    pub pan: f32,
 }
 
 impl Default for MaskVoice {
@@ -32,6 +37,8 @@ impl Default for MaskVoice {
             pressure: 1.0,
             timbre: 0.5,
             volume_gain: 1.0,
+            expression_gain: 1.0,
+            pan: 0.0,
         }
     }
 }
@@ -235,7 +242,7 @@ pub fn build_mask_with_voices(
     voices: &[MaskVoice],
     config: MaskConfig,
 ) {
-    build_mask_with_voices_impl(output, manual_mask_db, voices, config, None);
+    build_mask_with_voices_impl(output, manual_mask_db, voices, config, None, None);
 }
 
 /// Workspace-backed mask builder for the plug-in's real-time path.
@@ -248,7 +255,73 @@ pub fn build_mask_with_voices_precomputed(
 ) {
     debug_assert_eq!(workspace.sample_rate, config.sample_rate);
     debug_assert_eq!(workspace.fft_size, config.fft_size);
-    build_mask_with_voices_impl(output, manual_mask_db, voices, config, Some(workspace));
+    build_mask_with_voices_impl(
+        output,
+        manual_mask_db,
+        voices,
+        config,
+        Some(workspace),
+        None,
+    );
+}
+
+/// Stereo note contributions use a constant-power pan law with unity at center.
+/// The manual curve, motion and closed-note floor remain shared. Overlapping
+/// contributions retain the existing maximum rule independently on each side.
+pub fn build_stereo_masks_with_voices_precomputed(
+    left: &mut [f32],
+    right: &mut [f32],
+    manual_mask_db: &[f32; MANUAL_MASK_POINTS],
+    voices: &[MaskVoice],
+    config: MaskConfig,
+    workspace: &MaskWorkspace,
+) {
+    build_mask_with_voices_impl(
+        left,
+        manual_mask_db,
+        voices,
+        config,
+        Some(workspace),
+        Some(0),
+    );
+    if voices
+        .iter()
+        .all(|voice| voice.level <= 1.0e-5 || voice.pan == 0.0)
+    {
+        // Preserve the original single-mask cost for the common centered case.
+        right.copy_from_slice(left);
+        return;
+    }
+    build_mask_with_voices_impl(
+        right,
+        manual_mask_db,
+        voices,
+        config,
+        Some(workspace),
+        Some(1),
+    );
+}
+
+fn expression_channel_gain(voice: &MaskVoice, channel: Option<usize>) -> f32 {
+    let pan = if voice.pan.is_finite() {
+        voice.pan.clamp(-1.0, 1.0)
+    } else {
+        0.0
+    };
+    let gain = if voice.expression_gain.is_finite() {
+        voice.expression_gain.clamp(0.0, 4.0)
+    } else {
+        1.0
+    };
+    let balance = match channel {
+        _ if pan == 0.0 => 1.0,
+        Some(0) if pan == 1.0 => 0.0,
+        Some(1) if pan == -1.0 => 0.0,
+        Some(0) => ((pan + 1.0) * std::f32::consts::FRAC_PI_4).cos() * std::f32::consts::SQRT_2,
+        Some(1) => ((pan + 1.0) * std::f32::consts::FRAC_PI_4).sin() * std::f32::consts::SQRT_2,
+        _ => 1.0,
+    };
+    gain * balance
 }
 
 fn build_mask_with_voices_impl(
@@ -257,6 +330,7 @@ fn build_mask_with_voices_impl(
     voices: &[MaskVoice],
     config: MaskConfig,
     workspace: Option<&MaskWorkspace>,
+    channel: Option<usize>,
 ) {
     debug_assert_eq!(output.len(), config.fft_size / 2 + 1);
     let nyquist = config.sample_rate * 0.5;
@@ -279,6 +353,7 @@ fn build_mask_with_voices_impl(
                 continue;
             }
 
+            let expression_gain = expression_channel_gain(voice, channel);
             let pressure_gain = 0.35 + 0.65 * voice.pressure.clamp(0.0, 1.0);
             let note_level = voice.level * voice.volume_gain.max(0.0) * pressure_gain;
             let timbre_rolloff = (config.harmonic_rolloff_db_per_octave
@@ -291,6 +366,7 @@ fn build_mask_with_voices_impl(
                     workspace,
                     fundamental,
                     note_level,
+                    expression_gain,
                     timbre_rolloff,
                     partials.min(MAX_PARTIALS),
                     width,
@@ -341,7 +417,8 @@ fn build_mask_with_voices_impl(
                         || (-0.5 * relative_squared).exp(),
                         |workspace| workspace.gaussian(relative_squared),
                     );
-                    *openness = openness.max(note_level * harmonic_gain * bell);
+                    *openness = openness
+                        .max((note_level * harmonic_gain * bell).clamp(0.0, 1.0) * expression_gain);
                 }
             }
         }
@@ -357,7 +434,8 @@ fn build_mask_with_voices_impl(
         };
         let openness = *gain;
         let note_gate = if config.note_layer_enabled {
-            note_gate_gain(config.note_depth_db, config.width_cents, openness)
+            let floor = db_to_gain(-config.note_depth_db.max(0.0));
+            floor + (note_emphasis_gain(config.width_cents) - floor) * openness
         } else {
             1.0
         };
@@ -371,6 +449,7 @@ fn rasterize_compact_harmonic_envelope(
     workspace: &MaskWorkspace,
     fundamental: f32,
     note_level: f32,
+    expression_gain: f32,
     timbre_rolloff: f32,
     requested_partials: usize,
     width_cents: f32,
@@ -452,7 +531,7 @@ fn rasterize_compact_harmonic_envelope(
                 .clamp(0.0, GAUSSIAN_MAX_RELATIVE_SQUARED);
             best = best.max(harmonic_gain[index] * workspace.gaussian(relative_squared));
         }
-        *openness = openness.max(note_level * best);
+        *openness = openness.max((note_level * best).clamp(0.0, 1.0) * expression_gain);
     }
     true
 }
@@ -606,3 +685,6 @@ fn smoothing_alpha(elapsed_seconds: f32, time_seconds: f32) -> f32 {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod expression_tests;

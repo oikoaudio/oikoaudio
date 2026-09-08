@@ -95,6 +95,7 @@ fn precomputed_mask_matches_reference_path() {
             pressure: 0.72,
             timbre: 0.61,
             volume_gain: 0.91,
+            ..MaskVoice::default()
         },
         MaskVoice {
             note: 64,

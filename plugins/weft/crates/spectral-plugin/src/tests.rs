@@ -310,7 +310,7 @@ fn voice_ids_keep_overlapping_notes_independent() {
 
 #[test]
 fn expression_preparation_combines_note_and_channel_pitch() {
-    let mut voices = [VoiceState::EMPTY; 1];
+    let mut voices = [VoiceState::EMPTY; MAX_VOICES];
     voices[0] = VoiceState {
         occupied: true,
         held: true,
@@ -318,21 +318,20 @@ fn expression_preparation_combines_note_and_channel_pitch() {
         note: 69,
         level: 1.0,
         tuning_semitones: 0.25,
-        timbre: 0.8,
+        native_timbre: Some(0.8),
         ..VoiceState::EMPTY
     };
-    let mut bends = [0.0; 16];
-    bends[3] = 1.0;
+    let mut midi = MidiExpression::default();
+    midi.pitch_bend(3, 1.0);
+    midi.resolve(&mut voices, 2.0);
     let mut mask_voices = [MaskVoice::default(); MIDI_NOTES + 1];
     let mut levels = [0.0; MIDI_NOTES];
     let mut tunings = [0.0; MIDI_NOTES];
     let mut timbres = [0.5; MIDI_NOTES];
     let pinned = [0.0; MIDI_NOTES];
     prepare_mask_voices(
-        &voices,
+        &voices[..1],
         &mut mask_voices,
-        &bends,
-        2.0,
         0.0,
         0.0,
         &mut levels,
@@ -368,12 +367,13 @@ fn mts_tunes_live_and_pinned_notes_adds_expression_and_filters_mapping() {
         note: 69,
         channel: 2,
         level: 1.0,
-        tuning_semitones: 0.5,
+        expression: VoiceExpression {
+            tuning_semitones: 1.5,
+            ..VoiceExpression::DEFAULT
+        },
         ..VoiceState::EMPTY
     }];
     let mut targets = [MaskVoice::default(); MIDI_NOTES + 1];
-    let mut bends = [0.0; 16];
-    bends[2] = 0.5;
     let mut levels = [0.0; 128];
     let mut tunings = [0.0; 128];
     let mut timbres = [0.0; 128];
@@ -387,8 +387,6 @@ fn mts_tunes_live_and_pinned_notes_adds_expression_and_filters_mapping() {
     prepare_mask_voices(
         &voices,
         &mut targets,
-        &bends,
-        2.0,
         0.0,
         0.0,
         &mut levels,
@@ -403,8 +401,6 @@ fn mts_tunes_live_and_pinned_notes_adds_expression_and_filters_mapping() {
     prepare_mask_voices(
         &voices,
         &mut targets,
-        &bends,
-        2.0,
         0.0,
         0.0,
         &mut levels,
@@ -419,8 +415,6 @@ fn mts_tunes_live_and_pinned_notes_adds_expression_and_filters_mapping() {
     prepare_mask_voices(
         &voices,
         &mut targets,
-        &bends,
-        2.0,
         0.0,
         0.0,
         &mut levels,
