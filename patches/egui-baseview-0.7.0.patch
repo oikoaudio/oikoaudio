@@ -1,0 +1,238 @@
+--- a/src/window.rs
++++ b/src/window.rs
+@@ -10,7 +10,7 @@
+ };
+ use copypasta::ClipboardProvider;
+ use egui::{FullOutput, Pos2, Rect, Rgba, ViewportCommand, pos2, vec2};
+-use keyboard_types::Modifiers;
++use keyboard_types::{KeyState, Modifiers, NamedKey};
+ use raw_window_handle::HasWindowHandle;
+ 
+ use crate::App;
+@@ -314,6 +314,9 @@
+     IgnoreAll,
+     /// Only the given keys will be captured from the host.
+     CaptureKeys(Vec<keyboard_types::Key>),
++    /// Capture these Command/Ctrl shortcuts even without a focused egui widget.
++    /// Plain keys and other host shortcuts remain ignored.
++    CaptureCommands(Vec<keyboard_types::Key>),
+     /// All keys except the given ones will be captured from the host.
+     IgnoreKeys(Vec<keyboard_types::Key>),
+ }
+@@ -532,6 +535,27 @@
+     }
+ }
+ 
++/// `baseview::KeyboardEvent::modifiers` describes the state just before the
++/// event. Fold the modifier key itself into that state before forwarding it to
++/// egui so a modifier-only press or release updates the UI immediately.
++fn modifiers_after_keyboard_event(event: &keyboard_types::KeyboardEvent) -> Modifiers {
++    let mut modifiers = event.modifiers;
++    let modifier = match event.key {
++        keyboard_types::Key::Named(NamedKey::Shift) => Some(Modifiers::SHIFT),
++        keyboard_types::Key::Named(NamedKey::Alt) => Some(Modifiers::ALT),
++        keyboard_types::Key::Named(NamedKey::Control) => Some(Modifiers::CONTROL),
++        keyboard_types::Key::Named(NamedKey::Meta) => Some(Modifiers::META),
++        _ => None,
++    };
++    if let Some(modifier) = modifier {
++        match event.state {
++            KeyState::Down => modifiers.insert(modifier),
++            KeyState::Up => modifiers.remove(modifier),
++        }
++    }
++    modifiers
++}
++
+ impl<A: App> WindowHandler for EguiWindow<A> {
+     fn on_frame(&self) -> Result<(), HandlerError> {
+         let mut do_repaint_now = if let Some(repaint_notifier) = &self.repaint_notifier {
+@@ -633,8 +657,9 @@
+         }
+ 
+         if let Some(new_size) = new_size {
+-            if let Err(e) = self.window.resize(new_size) {
+-                error!("Failed to resize window: {}", e);
++            if let Err(_error) = self.window.resize(new_size) {
++                #[cfg(feature = "tracing")]
++                tracing::error!("Failed to resize window: {}", _error);
+             }
+         }
+ 
+@@ -744,8 +769,6 @@
+     }
+ 
+     fn on_event(&self, event: Event) -> EventStatus {
+-        let mut return_status = EventStatus::Captured;
+-
+         // Parent/embedded windows do not always gain keyboard focus
+         // Automatically on click. Request focus explicitly before forwarding the event.
+         //
+@@ -847,7 +870,8 @@
+                 _ => do_repaint = false,
+             },
+             baseview::Event::Keyboard(event) => {
+-                update_modifiers(&self.modifiers, &event.modifiers, &mut egui_input);
++                let current_modifiers = modifiers_after_keyboard_event(event);
++                update_modifiers(&self.modifiers, &current_modifiers, &mut egui_input);
+ 
+                 let pressed = event.state == keyboard_types::KeyState::Down;
+ 
+@@ -894,20 +918,6 @@
+                     }
+                 }
+ 
+-                match &self.inner.borrow().frame.key_capture {
+-                    KeyCapture::CaptureAll => {}
+-                    KeyCapture::IgnoreAll => return_status = EventStatus::Ignored,
+-                    KeyCapture::CaptureKeys(keys) => {
+-                        if !keys.contains(&event.key) {
+-                            return_status = EventStatus::Ignored
+-                        }
+-                    }
+-                    KeyCapture::IgnoreKeys(keys) => {
+-                        if keys.contains(&event.key) {
+-                            return_status = EventStatus::Ignored
+-                        }
+-                    }
+-                }
+             }
+             baseview::Event::Window(event) => match event {
+                 baseview::WindowEvent::Focused => {
+@@ -938,16 +948,15 @@
+             self.inner.borrow().egui_ctx.request_repaint();
+         }
+ 
+-        // For keyboard events, also check if egui actually wants keyboard input
+-        // This allows DAW shortcuts (spacebar, etc.) to pass through when no text field is focused
+         match &event {
+-            baseview::Event::Keyboard(_) => {
+-                let egui_ctx = &self.inner.borrow().egui_ctx;
+-                if return_status == EventStatus::Captured && !egui_ctx.egui_wants_keyboard_input() {
+-                    EventStatus::Ignored
+-                } else {
+-                    return_status
+-                }
++            baseview::Event::Keyboard(event) => {
++                let inner = self.inner.borrow();
++                keyboard_capture_status(
++                    &inner.frame.key_capture,
++                    &event.key,
++                    self.modifiers.get(),
++                    inner.egui_ctx.egui_wants_keyboard_input(),
++                )
+             }
+             baseview::Event::Mouse(_) => {
+                 let egui_ctx = &self.inner.borrow().egui_ctx;
+@@ -963,6 +972,28 @@
+     }
+ }
+ 
++fn keyboard_capture_status(
++    policy: &KeyCapture,
++    key: &keyboard_types::Key,
++    modifiers: egui::Modifiers,
++    widget_wants_input: bool,
++) -> EventStatus {
++    let captured = match policy {
++        // These commands are handled at editor level. Forwarding them because
++        // no text widget owns focus would let editor and host both undo.
++        KeyCapture::CaptureCommands(keys) => modifiers.command && !modifiers.alt && keys.contains(key),
++        KeyCapture::CaptureAll => widget_wants_input,
++        KeyCapture::IgnoreAll => false,
++        KeyCapture::CaptureKeys(keys) => widget_wants_input && keys.contains(key),
++        KeyCapture::IgnoreKeys(keys) => widget_wants_input && !keys.contains(key),
++    };
++    if captured {
++        EventStatus::Captured
++    } else {
++        EventStatus::Ignored
++    }
++}
++
+ fn is_cut_command(modifiers: egui::Modifiers, keycode: keyboard_types::Code) -> bool {
+     (modifiers.command && keycode == keyboard_types::Code::KeyX)
+         || (cfg!(target_os = "windows")
+@@ -983,3 +1014,82 @@
+             && modifiers.shift
+             && keycode == keyboard_types::Code::Insert)
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use keyboard_types::{Code, KeyboardEvent};
++
++    #[test]
++    fn editor_undo_commands_are_captured_without_widget_focus() {
++        let policy = KeyCapture::CaptureCommands(vec![
++            keyboard_types::Key::Character("z".into()),
++            keyboard_types::Key::Character("Z".into()),
++        ]);
++        for (key, modifiers) in [
++            ("z", egui::Modifiers::COMMAND),
++            ("Z", egui::Modifiers::COMMAND | egui::Modifiers::SHIFT),
++        ] {
++            assert_eq!(
++                keyboard_capture_status(
++                    &policy,
++                    &keyboard_types::Key::Character(key.into()),
++                    modifiers,
++                    false,
++                ),
++                EventStatus::Captured
++            );
++        }
++        for widget_wants_input in [false, true] {
++            for (key, modifiers) in [
++                ("z", egui::Modifiers::NONE),
++                (" ", egui::Modifiers::NONE),
++                ("p", egui::Modifiers::COMMAND),
++                ("z", egui::Modifiers::COMMAND | egui::Modifiers::ALT),
++            ] {
++                assert_eq!(
++                    keyboard_capture_status(
++                        &policy,
++                        &keyboard_types::Key::Character(key.into()),
++                        modifiers,
++                        widget_wants_input,
++                    ),
++                    EventStatus::Ignored
++                );
++            }
++        }
++    }
++
++    #[test]
++    fn text_entry_and_existing_key_capture_policies_keep_their_behavior() {
++        let key = keyboard_types::Key::Character("z".into());
++        for (policy, wants_input, expected) in [
++            (KeyCapture::CaptureAll, true, EventStatus::Captured),
++            (KeyCapture::CaptureAll, false, EventStatus::Ignored),
++            (KeyCapture::IgnoreAll, true, EventStatus::Ignored),
++            (KeyCapture::IgnoreKeys(vec![key.clone()]), true, EventStatus::Ignored),
++        ] {
++            assert_eq!(
++                keyboard_capture_status(&policy, &key, egui::Modifiers::COMMAND, wants_input),
++                expected
++            );
++        }
++    }
++
++    #[test]
++    fn modifier_key_events_report_the_state_after_the_event() {
++        let shift_down = KeyboardEvent::key_down(NamedKey::Shift, Code::ShiftLeft);
++        assert!(modifiers_after_keyboard_event(&shift_down).shift());
++
++        let mut shift_up = KeyboardEvent::key_up(NamedKey::Shift, Code::ShiftLeft);
++        shift_up.modifiers = Modifiers::SHIFT;
++        assert!(!modifiers_after_keyboard_event(&shift_up).shift());
++
++        let alt_down = KeyboardEvent::key_down(NamedKey::Alt, Code::AltLeft);
++        assert!(modifiers_after_keyboard_event(&alt_down).alt());
++
++        let mut alt_up = KeyboardEvent::key_up(NamedKey::Alt, Code::AltLeft);
++        alt_up.modifiers = Modifiers::ALT;
++        assert!(!modifiers_after_keyboard_event(&alt_up).alt());
++    }
++}

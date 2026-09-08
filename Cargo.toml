@@ -1,0 +1,36 @@
+[workspace]
+members = [
+    "crates/oiko-dsp",
+    "crates/oiko-ui",
+    "crates/oiko-plugin",
+    "crates/oiko-tuning",
+    "xtask",
+]
+exclude = ["vendor/nice-plug-core", "vendor/nice-plug", "vendor/egui-baseview", "vendor/baseview"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.92"
+license = "MIT"
+version = "0.1.0"
+
+[workspace.dependencies]
+egui = { version = "=0.36.1", default-features = false, features = ["default_fonts"] }
+nice-plug = { version = "=0.3.0", default-features = false, features = ["assert_process_allocs", "editor", "vst3"] }
+nice-plug-egui = { version = "=0.4.0", default-features = false, features = ["opengl"] }
+
+oiko-dsp = { path = "crates/oiko-dsp" }
+oiko-ui = { path = "crates/oiko-ui" }
+oiko-plugin = { path = "crates/oiko-plugin" }
+oiko-tuning = { path = "crates/oiko-tuning" }
+
+[patch.crates-io]
+nice-plug-core = { path = "vendor/nice-plug-core" }
+nice-plug = { path = "vendor/nice-plug" }
+egui-baseview = { path = "vendor/egui-baseview" }
+baseview = { path = "vendor/baseview" }
+
+[profile.release]
+lto = "thin"
+strip = "debuginfo"

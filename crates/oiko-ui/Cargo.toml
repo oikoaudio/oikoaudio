@@ -1,0 +1,13 @@
+[package]
+name = "oiko-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Shared Oiko typography and interface scale policy."
+
+[dependencies]
+egui.workspace = true
+
+[package.metadata.oiko]
+role = "ui"

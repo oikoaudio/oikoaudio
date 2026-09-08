@@ -1,0 +1,201 @@
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -20,3 +20,6 @@
+ 
+ /// A re-export of the `tracing` crate for use in the debug macros. This should not be used directly.
+ pub use tracing;
++
++#[cfg(test)]
++mod regression_tests;
+--- a/src/plugin.rs
++++ b/src/plugin.rs
+@@ -195,6 +195,13 @@
+     /// This is an advanced feature that the vast majority of plugins won't need to implement.
+     fn filter_state(state: &mut PluginState) {}
+ 
++    /// Validate a migrated state before the wrapper changes parameters or persisted fields.
++    /// Return an error to reject the complete load without changing the live state.
++    /// This runs after `filter_state` for both host and plug-in initiated loads.
++    fn validate_state(state: &PluginState) -> Result<(), String> {
++        Ok(())
++    }
++
+     //
+     // The following functions follow the lifetime of the plugin.
+     //
+--- a/src/params/float.rs
++++ b/src/params/float.rs
+@@ -223,21 +223,25 @@
+         // REAPER spams automation events with the same value. This prevents callbacks from firing
+         // multiple times. This can be problematic when they're used to trigger expensive
+         // computations when a parameter changes.
++        // The base value must change even when modulation or quantization keeps
++        // the effective value unchanged. Only the effective-value callback is deduplicated.
++        self.normalized_value
++            .store(normalized_value, Ordering::Relaxed);
++        let base_changed = self
++            .unmodulated_value
++            .swap(unmodulated_value, Ordering::Relaxed)
++            != unmodulated_value;
++        self.unmodulated_normalized_value
++            .store(unmodulated_normalized_value, Ordering::Relaxed);
+         let old_value = self.value.swap(value, Ordering::Relaxed);
+         if value != old_value {
+-            self.normalized_value
+-                .store(normalized_value, Ordering::Relaxed);
+-            self.unmodulated_value
+-                .store(unmodulated_value, Ordering::Relaxed);
+-            self.unmodulated_normalized_value
+-                .store(unmodulated_normalized_value, Ordering::Relaxed);
+             if let Some(f) = &self.value_changed {
+                 f(value);
+             }
+ 
+             true
+         } else {
+-            false
++            base_changed
+         }
+     }
+ 
+--- a/src/params/integer.rs
++++ b/src/params/integer.rs
+@@ -203,21 +203,25 @@
+         // REAPER spams automation events with the same value. This prevents callbacks from firing
+         // multiple times. This can be problematic when they're used to trigger expensive
+         // computations when a parameter changes.
++        // The base value must change even when modulation or quantization keeps
++        // the effective value unchanged. Only the effective-value callback is deduplicated.
++        self.normalized_value
++            .store(normalized_value, Ordering::Relaxed);
++        let base_changed = self
++            .unmodulated_value
++            .swap(unmodulated_value, Ordering::Relaxed)
++            != unmodulated_value;
++        self.unmodulated_normalized_value
++            .store(unmodulated_normalized_value, Ordering::Relaxed);
+         let old_value = self.value.swap(value, Ordering::Relaxed);
+         if value != old_value {
+-            self.normalized_value
+-                .store(normalized_value, Ordering::Relaxed);
+-            self.unmodulated_value
+-                .store(unmodulated_value, Ordering::Relaxed);
+-            self.unmodulated_normalized_value
+-                .store(unmodulated_normalized_value, Ordering::Relaxed);
+             if let Some(f) = &self.value_changed {
+                 f(value);
+             }
+ 
+             true
+         } else {
+-            false
++            base_changed
+         }
+     }
+ 
+--- a/src/params/boolean.rs
++++ b/src/params/boolean.rs
+@@ -183,21 +183,25 @@
+         // REAPER spams automation events with the same value. This prevents callbacks from firing
+         // multiple times. This can be problematic when they're used to trigger expensive
+         // computations when a parameter changes.
++        // The base value must change even when modulation or quantization keeps
++        // the effective value unchanged. Only the effective-value callback is deduplicated.
++        self.normalized_value
++            .store(normalized_value, Ordering::Relaxed);
++        let base_changed = self
++            .unmodulated_value
++            .swap(unmodulated_value, Ordering::Relaxed)
++            != unmodulated_value;
++        self.unmodulated_normalized_value
++            .store(unmodulated_normalized_value, Ordering::Relaxed);
+         let old_value = self.value.swap(value, Ordering::Relaxed);
+         if value != old_value {
+-            self.normalized_value
+-                .store(normalized_value, Ordering::Relaxed);
+-            self.unmodulated_value
+-                .store(unmodulated_value, Ordering::Relaxed);
+-            self.unmodulated_normalized_value
+-                .store(unmodulated_normalized_value, Ordering::Relaxed);
+             if let Some(f) = &self.value_changed {
+                 f(value);
+             }
+ 
+             true
+         } else {
+-            false
++            base_changed
+         }
+     }
+ 
+--- /dev/null
++++ b/src/regression_tests.rs
+@@ -0,0 +1,68 @@
++use crate::params::{
++    BoolParam, FloatParam, IntParam, InternalParamMut, Param,
++    range::{FloatRange, IntRange},
++};
++use std::sync::{
++    Arc,
++    atomic::{AtomicUsize, Ordering},
++};
++
++#[test]
++fn clipped_float_keeps_base_edit_and_deduplicates_effective_callback() {
++    let calls = Arc::new(AtomicUsize::new(0));
++    let counter = calls.clone();
++    let p = FloatParam::new("Test", 0.8, FloatRange::Linear { min: 0.0, max: 1.0 }).with_callback(
++        Arc::new(move |_| {
++            counter.fetch_add(1, Ordering::Relaxed);
++        }),
++    );
++    unsafe {
++        assert!(p._internal_modulate_value(0.5));
++        assert!(p._internal_set_plain_value(0.7));
++        assert_eq!(p.unmodulated_plain_value(), 0.7);
++        assert_eq!(p.unmodulated_normalized_value(), 0.7);
++        assert_eq!(p.value(), 1.0);
++        assert_eq!(calls.load(Ordering::Relaxed), 1);
++        assert!(!p._internal_set_plain_value(0.7));
++        assert!(p._internal_modulate_value(0.0));
++        assert_eq!(p.value(), 0.7);
++        assert_eq!(calls.load(Ordering::Relaxed), 2);
++    }
++}
++
++#[test]
++fn clipped_integer_and_boolean_keep_base_edits() {
++    let integer = IntParam::new("Integer", 8, IntRange::Linear { min: 0, max: 10 });
++    let boolean = BoolParam::new("Boolean", true);
++    unsafe {
++        integer._internal_modulate_value(0.5);
++        assert!(integer._internal_set_plain_value(7));
++        assert_eq!(integer.unmodulated_plain_value(), 7);
++        assert_eq!(integer.value(), 10);
++        integer._internal_modulate_value(0.0);
++        assert_eq!(integer.value(), 7);
++        boolean._internal_modulate_value(1.0);
++        assert!(boolean._internal_set_plain_value(false));
++        assert!(!boolean.unmodulated_plain_value());
++        assert!(boolean.value());
++        boolean._internal_modulate_value(0.0);
++        assert!(!boolean.value());
++    }
++}
++
++#[test]
++fn lower_clamp_and_quantization_update_normalized_values() {
++    let p = FloatParam::new("Float", 0.2, FloatRange::Linear { min: 0.0, max: 1.0 });
++    let integer = IntParam::new("Integer", 5, IntRange::Linear { min: 0, max: 10 });
++    unsafe {
++        p._internal_modulate_value(-0.5);
++        p._internal_set_plain_value(0.3);
++        p._internal_modulate_value(0.0);
++        assert_eq!(p.value(), 0.3);
++        integer._internal_modulate_value(0.01);
++        assert_eq!(integer.value(), 5);
++        assert!((integer.modulated_normalized_value() - 0.51).abs() < 1e-6);
++        integer._internal_modulate_value(0.02);
++        assert!((integer.modulated_normalized_value() - 0.52).abs() < 1e-6);
++    }
++}

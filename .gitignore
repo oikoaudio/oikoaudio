@@ -1,0 +1,13 @@
+/target/
+
+# Local working notes and experiments, at any directory level.
+.scratch/
+
+# Local agent instructions, at any directory level.
+AGENTS.md
+
+/vendor/*/target/
+
+__pycache__/
+
+/dist/

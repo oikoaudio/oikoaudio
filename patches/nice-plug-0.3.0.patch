@@ -1,0 +1,63 @@
+--- a/src/wrapper/clap/wrapper.rs
++++ b/src/wrapper/clap/wrapper.rs
+@@ -1983,6 +1983,13 @@
+             "Plugin returned false when reinitializing after loading state"
+         );
+ 
++        // State restore changes parameter values without host automation events.
++        // Invalidate the host's cached values, including with the editor closed.
++        if success && self.host_params.borrow().is_some() {
++            let task_posted = self.schedule_gui(Task::RescanParamValues);
++            crate::nice_debug_assert!(task_posted, "The task queue is full, dropping task...");
++        }
++
+         #[cfg(feature = "editor")]
+         {
+             // Reinitialize the plugin after loading state so it can respond to the new parameter values
+@@ -3642,8 +3649,22 @@
+             return false;
+         }
+         let length = u64::from_le_bytes(length_bytes);
+-
+-        let mut read_buffer: Vec<u8> = Vec::with_capacity(length as usize);
++        // A corrupt state stream (or state written by a different wrapper)
++        // must never be able to make the plug-in host attempt an unbounded
++        // allocation. 256 MiB leaves ample room for sample-heavy plug-ins and
++        // turns incompatible state into a normal load failure.
++        const MAX_STATE_BYTES: u64 = 256 * 1024 * 1024;
++        if length > MAX_STATE_BYTES || usize::try_from(length).is_err() {
++            crate::nice_debug_assert_failure!(
++                "Refusing to load an invalid state length of {} bytes (maximum is {}).",
++                length,
++                MAX_STATE_BYTES,
++            );
++            return false;
++        }
++        let length = length as usize;
++
++        let mut read_buffer: Vec<u8> = Vec::with_capacity(length);
+         if !read_stream(unsafe { &*stream }, read_buffer.spare_capacity_mut()) {
+             crate::nice_debug_assert_failure!(
+                 "Error or end of stream while reading the state buffer from the stream."
+@@ -3651,7 +3672,7 @@
+             return false;
+         }
+         unsafe {
+-            read_buffer.set_len(length as usize);
++            read_buffer.set_len(length);
+         }
+ 
+         match unsafe { state::deserialize_json(&read_buffer) } {
+--- a/src/wrapper/state.rs
++++ b/src/wrapper/state.rs
+@@ -139,6 +139,10 @@
+ ) -> bool {
+     // This lets the plugin perform migrations on old state if needed
+     P::filter_state(state);
++    if let Err(error) = P::validate_state(state) {
++        crate::nice_trace!("Rejected plugin state: {}", error);
++        return false;
++    }
+ 
+     let sample_rate = current_buffer_config.map(|c| c.sample_rate);
+     for (param_id_str, param_value) in &state.params {

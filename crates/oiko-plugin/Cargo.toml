@@ -1,0 +1,16 @@
+[package]
+name = "oiko-plugin"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Oiko NicePlug host integration and editor lifecycle."
+
+[dependencies]
+egui.workspace = true
+nice-plug.workspace = true
+nice-plug-egui.workspace = true
+oiko-ui = { path = "../oiko-ui" }
+
+[package.metadata.oiko]
+role = "host"

@@ -1,0 +1,11 @@
+--- a/include/TuningsImpl.h
++++ b/include/TuningsImpl.h
+@@ -417,7 +417,7 @@
+             while (validLine && *lc != '\0')
+             {
+                 if (!(*lc == ' ' || std::isdigit(*lc) || *lc == '.' || *lc == (char)13 ||
+-                      *lc == '\n'))
++                      *lc == '\n' || (state == reference && *lc == '-' && lc == line.c_str() + line.find_first_not_of(" \t"))))
+                 {
+                     validLine = false;
+                     badChar = *lc;

@@ -1,0 +1,169 @@
+use super::*;
+use crate::gl::*;
+use crate::wrappers::glx::*;
+use crate::wrappers::xlib::{XErrorHandler, XLibError};
+
+use crate::platform::x11::xcb_window::XcbWindow;
+use std::ffi::{c_ulong, c_void, CStr};
+use std::rc::Rc;
+use x11_dl::error::OpenError;
+use x11_dl::glx::GLXContext;
+
+#[derive(Debug)]
+pub enum CreationFailedError {
+    NoValidFBConfig,
+    NoVisual,
+    GetProcAddressFailed,
+    MakeCurrentFailed,
+    ContextCreationFailed,
+    X11Error(XLibError),
+    OpenError(OpenError),
+}
+
+impl Display for CreationFailedError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CreationFailedError::NoValidFBConfig => {
+                f.write_str("Could not find a valid Framebuffer configuration")
+            }
+            CreationFailedError::NoVisual => {
+                f.write_str("Could not find a matching visual configuration")
+            }
+            CreationFailedError::GetProcAddressFailed => f.write_str("GetProcAddress failed"),
+            CreationFailedError::MakeCurrentFailed => f.write_str("MakeCurrent failed"),
+            CreationFailedError::ContextCreationFailed => f.write_str("Faile to create GL context"),
+            CreationFailedError::X11Error(e) => e.fmt(f),
+            CreationFailedError::OpenError(e) => e.fmt(f),
+        }
+    }
+}
+
+pub type GlContext = Rc<GlContextInner>;
+
+pub struct GlContextInner {
+    glx: Glx,
+    window: NonZeroU32,
+    connection: Rc<X11Connection>,
+    context: GLXContext,
+}
+
+/// The frame buffer configuration along with the general OpenGL configuration to somewhat minimize
+/// misuse.
+pub struct FbConfig {
+    gl_config: GlConfig,
+    fb_config: GlxFbConfig,
+}
+
+/// The configuration a window should be created with after calling
+/// [GlContextInner::get_fb_config_and_visual].
+pub struct WindowConfig {
+    pub depth: u8,
+    pub visual: u32,
+}
+
+impl GlContextInner {
+    /// Creating an OpenGL context under X11 works slightly different. Different OpenGL
+    /// configurations require different framebuffer configurations, and to be able to use that
+    /// context with a window the window needs to be created with a matching visual. This means that
+    /// you need to decide on the framebuffer config before creating the window, ask the X11 server
+    /// for a matching visual for that framebuffer config, crate the window with that visual, and
+    /// only then create the OpenGL context.
+    ///
+    /// Use [Self::get_fb_config_and_visual] to create both of these things.
+    pub fn create(
+        window: &XcbWindow, connection: Rc<X11Connection>, config: FbConfig,
+    ) -> Result<Rc<GlContextInner>> {
+        let glx = Glx::open()?;
+
+        let xlib_connection = connection.conn.xlib_connection();
+
+        XErrorHandler::handle(xlib_connection, |error_handler| {
+            let Some(create_context) = glx.get_glx_create_context_attribs_arb() else {
+                return Err(CreationFailedError::GetProcAddressFailed.into());
+            };
+
+            let context = create_context.call(
+                xlib_connection,
+                &config.gl_config,
+                config.fb_config,
+                error_handler,
+            )?;
+
+            Ok(Rc::new(GlContextInner {
+                glx,
+                window: window.id(),
+                connection: Rc::clone(&connection),
+                context,
+            }))
+        })
+    }
+
+    /// Find a matching framebuffer config and window visual for the given OpenGL configuration.
+    /// This needs to be passed to [Self::create] along with a handle to a window that was created
+    /// using the visual also returned from this function.
+    pub fn get_fb_config_and_visual(
+        connection: &X11Connection, config: GlConfig,
+    ) -> Result<(FbConfig, WindowConfig)> {
+        let glx = Glx::open()?;
+
+        let xlib_connection = connection.conn.xlib_connection();
+
+        XErrorHandler::handle(xlib_connection, |error_handler| {
+            let fb_config = glx.choose_best_fb_config(xlib_connection, &config, error_handler)?;
+
+            // Now that we have a matching framebuffer config, we need to know which visual matches
+            // this config so the window is compatible with the OpenGL context we're about to create
+            let visual =
+                glx.get_visual_from_fb_config(xlib_connection, fb_config, error_handler)?;
+
+            Ok((
+                FbConfig { fb_config, gl_config: config },
+                WindowConfig { depth: visual.depth as u8, visual: visual.visualid as u32 },
+            ))
+        })
+    }
+
+    pub unsafe fn make_current(&self) -> Result<()> {
+        XErrorHandler::handle(self.connection.conn.xlib_connection(), |error_handler| {
+            self.glx.make_current(
+                self.connection.conn.xlib_connection(),
+                self.window_id(),
+                self.context,
+                error_handler,
+            )
+        })
+    }
+
+    pub unsafe fn make_not_current(&self) -> Result<()> {
+        XErrorHandler::handle(self.connection.conn.xlib_connection(), |error_handler| {
+            self.glx.clear_current(self.connection.conn.xlib_connection(), error_handler)
+        })
+    }
+
+    fn window_id(&self) -> c_ulong {
+        self.window.get().into()
+    }
+
+    pub fn get_proc_address(&self, symbol: &CStr) -> *const c_void {
+        match self.glx.get_proc_address(symbol) {
+            Some(ptr) => ptr.as_ptr(),
+            None => std::ptr::null(),
+        }
+    }
+
+    pub fn swap_buffers(&self) -> Result<()> {
+        XErrorHandler::handle(self.connection.conn.xlib_connection(), |error_handler| {
+            self.glx.swap_buffers(
+                self.connection.conn.xlib_connection(),
+                self.window_id(),
+                error_handler,
+            )
+        })
+    }
+}
+
+impl Drop for GlContextInner {
+    fn drop(&mut self) {
+        unsafe { self.glx.destroy_context(self.connection.conn.xlib_connection(), self.context) }
+    }
+}

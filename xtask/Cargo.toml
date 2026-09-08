@@ -1,0 +1,13 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+nice-plug-xtask = "0.1.1"
+
+[package.metadata.oiko]
+role = "tool"
