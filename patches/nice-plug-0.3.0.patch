@@ -1,6 +1,249 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -78,6 +78,18 @@
+ path = "src/lib.rs"
+ 
+ [[test]]
++name = "clap_state_stream"
++path = "tests/clap_state_stream.rs"
++
++[[test]]
++name = "note_expressions"
++path = "tests/note_expressions.rs"
++
++[[test]]
++name = "clap_event_timing"
++path = "tests/clap_event_timing.rs"
++
++[[test]]
+ name = "derive_params"
+ path = "tests/derive_params.rs"
+ 
+--- a/src/wrapper/clap/util.rs
++++ b/src/wrapper/clap/util.rs
+@@ -133,7 +133,7 @@
+                 (slice.len() - read_pos) as u64,
+             )
+         };
+-        if bytes_read <= 0 {
++        if bytes_read <= 0 || bytes_read as u64 > (slice.len() - read_pos) as u64 {
+             return false;
+         }
+ 
 --- a/src/wrapper/clap/wrapper.rs
 +++ b/src/wrapper/clap/wrapper.rs
-@@ -1983,6 +1983,13 @@
+@@ -993,20 +993,18 @@
+         let mut input_events = self.input_events.borrow_mut();
+         input_events.clear();
+ 
+-        // To achieve this, we'll always read one event ahead
+         let num_events = unsafe {
+             clap_call! { in_=>size(in_) }
+         };
+-        if num_events == 0 {
+-            return None;
+-        }
+-
+-        let start_idx = resume_from_event_idx as u32;
+-        let mut event: *const clap_event_header = unsafe {
+-            clap_call! { in_=>get(in_, start_idx) }
+-        };
+-        for next_event_idx in (start_idx + 1)..num_events {
++        for event_idx in (resume_from_event_idx as u32)..num_events {
+             unsafe {
++                let event: *const clap_event_header = clap_call! { in_=>get(in_, event_idx) };
++                // Check the current event before applying it, including the first event in the
++                // buffer. A later parameter or transport change belongs to the next process slice.
++                if (*event).time > current_sample_idx as u32 && stop_predicate(event) {
++                    return Some(((*event).time as usize, event_idx as usize));
++                }
++
+                 self.handle_in_event(
+                     event,
+                     &mut input_events,
+@@ -1014,26 +1012,7 @@
+                     current_sample_idx,
+                     total_buffer_len,
+                 );
+-                // Stop just before the next parameter change or transport information event at a sample
+-                // after the current sample
+-                let next_event: *const clap_event_header =
+-                    clap_call! { in_=>get(in_, next_event_idx) };
+-                if (*next_event).time > current_sample_idx as u32 && stop_predicate(next_event) {
+-                    return Some(((*next_event).time as usize, next_event_idx as usize));
+-                }
+-                event = next_event;
+-            }
+-        }
+-
+-        // Don't forget about the last event
+-        unsafe {
+-            self.handle_in_event(
+-                event,
+-                &mut input_events,
+-                Some(transport_info),
+-                current_sample_idx,
+-                total_buffer_len,
+-            );
++            }
+         }
+ 
+         None
+@@ -1156,8 +1135,8 @@
+                         },
+                         note_id: voice_id.unwrap_or(-1),
+                         port_index: 0,
+-                        channel: channel as i16,
+-                        key: note as i16,
++                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
++                        key: if note == u8::MAX { -1 } else { note as i16 },
+                         velocity: velocity as f64,
+                     };
+ 
+@@ -1182,8 +1161,8 @@
+                         },
+                         note_id: voice_id.unwrap_or(-1),
+                         port_index: 0,
+-                        channel: channel as i16,
+-                        key: note as i16,
++                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
++                        key: if note == u8::MAX { -1 } else { note as i16 },
+                         velocity: velocity as f64,
+                     };
+ 
+@@ -1209,8 +1188,8 @@
+                         },
+                         note_id: voice_id.unwrap_or(-1),
+                         port_index: 0,
+-                        channel: channel as i16,
+-                        key: note as i16,
++                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
++                        key: if note == u8::MAX { -1 } else { note as i16 },
+                         velocity: 0.0,
+                     };
+ 
+@@ -1236,8 +1215,8 @@
+                         expression_id: CLAP_NOTE_EXPRESSION_PRESSURE,
+                         note_id: voice_id.unwrap_or(-1),
+                         port_index: 0,
+-                        channel: channel as i16,
+-                        key: note as i16,
++                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
++                        key: if note == u8::MAX { -1 } else { note as i16 },
+                         value: pressure as f64,
+                     };
+ 
+@@ -1263,8 +1242,8 @@
+                         expression_id: CLAP_NOTE_EXPRESSION_VOLUME,
+                         note_id: voice_id.unwrap_or(-1),
+                         port_index: 0,
+-                        channel: channel as i16,
+-                        key: note as i16,
++                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
++                        key: if note == u8::MAX { -1 } else { note as i16 },
+                         value: gain as f64,
+                     };
+ 
+@@ -1290,8 +1269,8 @@
+                         expression_id: CLAP_NOTE_EXPRESSION_PAN,
+                         note_id: voice_id.unwrap_or(-1),
+                         port_index: 0,
+-                        channel: channel as i16,
+-                        key: note as i16,
++                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
++                        key: if note == u8::MAX { -1 } else { note as i16 },
+                         value: (pan as f64 + 1.0) / 2.0,
+                     };
+ 
+@@ -1317,8 +1296,8 @@
+                         expression_id: CLAP_NOTE_EXPRESSION_TUNING,
+                         note_id: voice_id.unwrap_or(-1),
+                         port_index: 0,
+-                        channel: channel as i16,
+-                        key: note as i16,
++                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
++                        key: if note == u8::MAX { -1 } else { note as i16 },
+                         value: tuning as f64,
+                     };
+ 
+@@ -1344,8 +1323,8 @@
+                         expression_id: CLAP_NOTE_EXPRESSION_VIBRATO,
+                         note_id: voice_id.unwrap_or(-1),
+                         port_index: 0,
+-                        channel: channel as i16,
+-                        key: note as i16,
++                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
++                        key: if note == u8::MAX { -1 } else { note as i16 },
+                         value: vibrato as f64,
+                     };
+ 
+@@ -1371,8 +1350,8 @@
+                         expression_id: CLAP_NOTE_EXPRESSION_EXPRESSION,
+                         note_id: voice_id.unwrap_or(-1),
+                         port_index: 0,
+-                        channel: channel as i16,
+-                        key: note as i16,
++                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
++                        key: if note == u8::MAX { -1 } else { note as i16 },
+                         value: expression as f64,
+                     };
+ 
+@@ -1398,8 +1377,8 @@
+                         expression_id: CLAP_NOTE_EXPRESSION_BRIGHTNESS,
+                         note_id: voice_id.unwrap_or(-1),
+                         port_index: 0,
+-                        channel: channel as i16,
+-                        key: note as i16,
++                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
++                        key: if note == u8::MAX { -1 } else { note as i16 },
+                         value: brightness as f64,
+                     };
+ 
+@@ -1580,6 +1559,7 @@
+             (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_ON) => {
+                 if P::MIDI_INPUT >= MidiConfig::Basic {
+                     let event = unsafe { &*(event as *const clap_event_note) };
++                    if event.port_index != 0 || !(0..16).contains(&event.channel) || !(0..128).contains(&event.key) { return; }
+                     input_events.push_back(NoteEvent::NoteOn {
+                         // When splitting up the buffer for sample accurate automation all events
+                         // should be relative to the block
+@@ -1598,6 +1578,7 @@
+             (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_OFF) => {
+                 if P::MIDI_INPUT >= MidiConfig::Basic {
+                     let event = unsafe { &*(event as *const clap_event_note) };
++                    if !(-1..=0).contains(&event.port_index) || !(-1..16).contains(&event.channel) || !(-1..128).contains(&event.key) { return; }
+                     input_events.push_back(NoteEvent::NoteOff {
+                         timing,
+                         voice_id: if event.note_id != -1 {
+@@ -1614,6 +1595,7 @@
+             (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_CHOKE) => {
+                 if P::MIDI_INPUT >= MidiConfig::Basic {
+                     let event = unsafe { &*(event as *const clap_event_note) };
++                    if !(-1..=0).contains(&event.port_index) || !(-1..16).contains(&event.channel) || !(-1..128).contains(&event.key) { return; }
+                     input_events.push_back(NoteEvent::Choke {
+                         timing,
+                         voice_id: if event.note_id != -1 {
+@@ -1621,7 +1603,7 @@
+                         } else {
+                             None
+                         },
+-                        // FIXME: These values are also allowed to be -1, we need to support that
++                        // Preserve -1 as NOTE_ADDRESS_WILDCARD (u8::MAX).
+                         channel: event.channel as u8,
+                         note: event.key as u8,
+                     });
+@@ -1629,8 +1611,9 @@
+             }
+             (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_EXPRESSION) => {
+                 if P::MIDI_INPUT >= MidiConfig::Basic {
+-                    // TODO: Add support for the other expression types
+                     let event = unsafe { &*(event as *const clap_event_note_expression) };
++                    if !(-1..=0).contains(&event.port_index) || !(-1..16).contains(&event.channel) || !(-1..128).contains(&event.key) || !event.value.is_finite() { return; }
++
+                     match event.expression_id {
+                         CLAP_NOTE_EXPRESSION_PRESSURE => {
+                             input_events.push_back(NoteEvent::PolyPressure {
+@@ -1983,6 +1966,13 @@
              "Plugin returned false when reinitializing after loading state"
          );
  
@@ -14,37 +257,64 @@
          #[cfg(feature = "editor")]
          {
              // Reinitialize the plugin after loading state so it can respond to the new parameter values
-@@ -3642,8 +3649,22 @@
+@@ -3314,8 +3304,10 @@
+                 let info = unsafe { &mut *info };
+                 info.id = 0;
+                 // NOTE: REAPER won't send us SysEx if we don't support the MIDI dialect
+-                // TODO: Implement MPE (would just be a toggle for the plugin to expose it) and MIDI2
+                 info.supported_dialects = CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI;
++                if P::CLAP_SUPPORTS_MPE && P::MIDI_INPUT >= MidiConfig::MidiCCs {
++                    info.supported_dialects |= clap_sys::ext::note_ports::CLAP_NOTE_DIALECT_MIDI_MPE;
++                }
+                 info.preferred_dialect = CLAP_NOTE_DIALECT_CLAP;
+                 strlcpy(&mut info.name, "Note Input");
+ 
+@@ -3641,17 +3633,37 @@
+             );
              return false;
          }
-         let length = u64::from_le_bytes(length_bytes);
+-        let length = u64::from_le_bytes(length_bytes);
 -
 -        let mut read_buffer: Vec<u8> = Vec::with_capacity(length as usize);
-+        // A corrupt state stream (or state written by a different wrapper)
-+        // must never be able to make the plug-in host attempt an unbounded
-+        // allocation. 256 MiB leaves ample room for sample-heavy plug-ins and
-+        // turns incompatible state into a normal load failure.
-+        const MAX_STATE_BYTES: u64 = 256 * 1024 * 1024;
-+        if length > MAX_STATE_BYTES || usize::try_from(length).is_err() {
-+            crate::nice_debug_assert_failure!(
-+                "Refusing to load an invalid state length of {} bytes (maximum is {}).",
-+                length,
-+                MAX_STATE_BYTES,
-+            );
-+            return false;
-+        }
-+        let length = length as usize;
-+
-+        let mut read_buffer: Vec<u8> = Vec::with_capacity(length);
-         if !read_stream(unsafe { &*stream }, read_buffer.spare_capacity_mut()) {
-             crate::nice_debug_assert_failure!(
-                 "Error or end of stream while reading the state buffer from the stream."
-@@ -3651,7 +3672,7 @@
-             return false;
-         }
-         unsafe {
+-        if !read_stream(unsafe { &*stream }, read_buffer.spare_capacity_mut()) {
+-            crate::nice_debug_assert_failure!(
+-                "Error or end of stream while reading the state buffer from the stream."
+-            );
+-            return false;
+-        }
+-        unsafe {
 -            read_buffer.set_len(length as usize);
-+            read_buffer.set_len(length);
++        let declared_length = u64::from_le_bytes(length_bytes);
++        // Vec byte capacities must fit in isize as well as usize. This is a platform
++        // representation limit, not a preset-size policy imposed on plugins.
++        let length = match usize::try_from(declared_length) {
++            Ok(length) if length <= isize::MAX as usize => length,
++            _ => return false,
++        };
++
++        // The prefix is untrusted. Grow only as the stream supplies data, rather than
++        // reserving its entire claimed length before discovering a truncated stream.
++        // This bounds each read, not the total state size (samplers may have large states).
++        const READ_CHUNK_BYTES: usize = 64 * 1024;
++        let mut read_buffer: Vec<u8> = Vec::new();
++        while read_buffer.len() < length {
++            let chunk_len = (length - read_buffer.len()).min(READ_CHUNK_BYTES);
++            if read_buffer.try_reserve(chunk_len).is_err() {
++                return false;
++            }
++            // Capacity may exceed the request after geometric growth. Read only the
++            // required bytes so we neither consume beyond the envelope nor expose
++            // uninitialized spare capacity to the deserializer.
++            if !read_stream(
++                unsafe { &*stream },
++                &mut read_buffer.spare_capacity_mut()[..chunk_len],
++            ) {
++                return false;
++            }
++            unsafe {
++                // read_stream initialized this entire chunk before returning true.
++                read_buffer.set_len(read_buffer.len() + chunk_len);
++            }
          }
  
          match unsafe { state::deserialize_json(&read_buffer) } {
@@ -61,3 +331,1415 @@
  
      let sample_rate = current_buffer_config.map(|c| c.sample_rate);
      for (param_id_str, param_value) in &state.params {
+--- /dev/null
++++ b/tests/clap_event_timing.rs
+@@ -0,0 +1,420 @@
++//! Exercise sample offsets through the public CLAP entry point, without a DAW or product DSP.
++use clap_sys::{
++    audio_buffer::clap_audio_buffer,
++    events::*,
++    ext::params::{CLAP_EXT_PARAMS, clap_param_info, clap_plugin_params},
++    factory::plugin_factory::{CLAP_PLUGIN_FACTORY_ID, clap_plugin_factory},
++    host::clap_host,
++    plugin::clap_plugin,
++    process::{CLAP_PROCESS_ERROR, clap_process},
++    version::CLAP_VERSION,
++};
++use nice_plug::prelude::*;
++use std::{
++    ffi::{c_char, c_void},
++    num::NonZeroU32,
++    ptr,
++    sync::Arc,
++};
++
++#[derive(Params)]
++struct ProbeParams {
++    #[id = "value"]
++    value: FloatParam,
++}
++impl Default for ProbeParams {
++    fn default() -> Self {
++        Self {
++            value: FloatParam::new("Value", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
++        }
++    }
++}
++
++#[derive(Default)]
++struct TimingProbe<const SAMPLE_ACCURATE: bool> {
++    params: Arc<ProbeParams>,
++}
++impl<const SAMPLE_ACCURATE: bool> Plugin for TimingProbe<SAMPLE_ACCURATE> {
++    const NAME: &'static str = "CLAP timing probe";
++    const VENDOR: &'static str = "NicePlug tests";
++    const URL: &'static str = "";
++    const EMAIL: &'static str = "";
++    const VERSION: &'static str = "0.0.0";
++    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
++        main_input_channels: NonZeroU32::new(2),
++        main_output_channels: NonZeroU32::new(2),
++        ..AudioIOLayout::const_default()
++    }];
++    const SAMPLE_ACCURATE_AUTOMATION: bool = SAMPLE_ACCURATE;
++    const MIDI_INPUT: MidiConfig = MidiConfig::Basic;
++    const MIDI_OUTPUT: MidiConfig = MidiConfig::Basic;
++    type Editor = ();
++    type SysExMessage = ();
++    type BackgroundTask = ();
++
++    fn params(&self) -> Arc<dyn Params> {
++        self.params.clone()
++    }
++
++    fn process(
++        &mut self,
++        buffer: &mut Buffer,
++        _: &mut AuxiliaryBuffers,
++        context: &mut impl ProcessContext<Self>,
++    ) -> ProcessStatus {
++        // No smoothing, latency, worker or GUI can mask the time the wrapper applies a change.
++        buffer.as_slice()[0].fill(self.params.value.value());
++        buffer.as_slice()[1].fill(context.transport().tempo.unwrap_or(120.0) as f32);
++        while let Some(event) = context.next_event() {
++            context.send_event(event);
++        }
++        ProcessStatus::Normal
++    }
++}
++impl<const SAMPLE_ACCURATE: bool> ClapPlugin for TimingProbe<SAMPLE_ACCURATE> {
++    const CLAP_ID: &'static str = if SAMPLE_ACCURATE {
++        "test.sample-accurate"
++    } else {
++        "test.block-rate"
++    };
++    const CLAP_DESCRIPTION: Option<&'static str> = None;
++    const CLAP_MANUAL_URL: Option<&'static str> = None;
++    const CLAP_SUPPORT_URL: Option<&'static str> = None;
++    const CLAP_FEATURES: &'static [ClapFeature] = &[ClapFeature::AudioEffect];
++}
++nice_export_clap!(TimingProbe<true>, TimingProbe<false>);
++
++// The event payloads and list are owned by the caller for the entire process call.
++enum Event {
++    Value(clap_event_param_value),
++    Modulation(clap_event_param_mod),
++    Note(clap_event_note),
++    Transport(clap_event_transport),
++}
++impl Event {
++    fn header(&self) -> &clap_event_header {
++        match self {
++            Self::Value(event) => &event.header,
++            Self::Modulation(event) => &event.header,
++            Self::Note(event) => &event.header,
++            Self::Transport(event) => &event.header,
++        }
++    }
++
++    fn value(param_id: u32, time: u32, value: f64) -> Self {
++        Self::Value(clap_event_param_value {
++            header: header::<clap_event_param_value>(CLAP_EVENT_PARAM_VALUE, time),
++            param_id,
++            cookie: ptr::null_mut(),
++            note_id: -1,
++            port_index: -1,
++            channel: -1,
++            key: -1,
++            value,
++        })
++    }
++
++    fn modulation(param_id: u32, time: u32, amount: f64) -> Self {
++        Self::Modulation(clap_event_param_mod {
++            header: header::<clap_event_param_mod>(CLAP_EVENT_PARAM_MOD, time),
++            param_id,
++            cookie: ptr::null_mut(),
++            note_id: -1,
++            port_index: -1,
++            channel: -1,
++            key: -1,
++            amount,
++        })
++    }
++
++    fn note(time: u32, key: i16) -> Self {
++        Self::Note(clap_event_note {
++            header: header::<clap_event_note>(CLAP_EVENT_NOTE_ON, time),
++            note_id: key as i32,
++            port_index: 0,
++            channel: 0,
++            key,
++            velocity: 1.0,
++        })
++    }
++
++    fn tempo(time: u32, tempo: f64) -> Self {
++        Self::Transport(clap_event_transport {
++            header: header::<clap_event_transport>(CLAP_EVENT_TRANSPORT, time),
++            flags: CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_IS_PLAYING,
++            tempo,
++            // No song position: transport-origin reconstruction is a separate contract.
++            ..unsafe { std::mem::zeroed() }
++        })
++    }
++}
++
++fn header<T>(type_: u16, time: u32) -> clap_event_header {
++    clap_event_header {
++        size: std::mem::size_of::<T>() as u32,
++        time,
++        space_id: CLAP_CORE_EVENT_SPACE_ID,
++        type_,
++        flags: 0,
++    }
++}
++
++unsafe extern "C" fn host_extension(_: *const clap_host, _: *const c_char) -> *const c_void {
++    ptr::null()
++}
++unsafe extern "C" fn event_count(list: *const clap_input_events) -> u32 {
++    unsafe { (&*((*list).ctx as *const Vec<Event>)).len() as u32 }
++}
++unsafe extern "C" fn event_at(
++    list: *const clap_input_events,
++    index: u32,
++) -> *const clap_event_header {
++    unsafe { (&*((*list).ctx as *const Vec<Event>))[index as usize].header() }
++}
++unsafe extern "C" fn output_event(
++    list: *const clap_output_events,
++    event: *const clap_event_header,
++) -> bool {
++    unsafe {
++        let notes = &mut *((*list).ctx as *mut Vec<(u32, i16)>);
++        if (*event).type_ == CLAP_EVENT_NOTE_ON {
++            if notes.len() == notes.capacity() {
++                return false;
++            }
++            notes.push(((*event).time, (*(event as *const clap_event_note)).key));
++        }
++    }
++    true
++}
++
++struct Host {
++    plugin: *const clap_plugin,
++    param_id: u32,
++    // Heap allocation keeps the host address stable until after plugin destruction.
++    _host: Box<clap_host>,
++}
++impl Host {
++    fn new(sample_accurate: bool) -> Self {
++        let host = Box::new(clap_host {
++            clap_version: CLAP_VERSION,
++            host_data: ptr::null_mut(),
++            name: c"Timing test host".as_ptr(),
++            vendor: c"NicePlug tests".as_ptr(),
++            url: c"".as_ptr(),
++            version: c"1".as_ptr(),
++            get_extension: Some(host_extension),
++            request_restart: None,
++            request_process: None,
++            request_callback: None,
++        });
++        unsafe {
++            assert!(clap_entry.init.unwrap()(c"test".as_ptr()));
++            let factory = &*(clap_entry.get_factory.unwrap()(CLAP_PLUGIN_FACTORY_ID.as_ptr())
++                as *const clap_plugin_factory);
++            let descriptor =
++                factory.get_plugin_descriptor.unwrap()(factory, u32::from(!sample_accurate));
++            let plugin = factory.create_plugin.unwrap()(factory, &*host, (*descriptor).id);
++            assert!(!plugin.is_null());
++            assert!((*plugin).init.unwrap()(plugin));
++            let params = &*((*plugin).get_extension.unwrap()(plugin, CLAP_EXT_PARAMS.as_ptr())
++                as *const clap_plugin_params);
++            let mut info = std::mem::zeroed::<clap_param_info>();
++            assert!(params.get_info.unwrap()(plugin, 0, &mut info));
++            assert!((*plugin).activate.unwrap()(plugin, 48_000.0, 1, 256));
++            assert!((*plugin).start_processing.unwrap()(plugin));
++            Self {
++                plugin,
++                param_id: info.id,
++                _host: host,
++            }
++        }
++    }
++
++    fn process(
++        &mut self,
++        samples: usize,
++        mut events: Vec<Event>,
++    ) -> ([Vec<f32>; 2], Vec<(u32, i16)>) {
++        assert!((1..=256).contains(&samples));
++        assert!(
++            events
++                .windows(2)
++                .all(|pair| pair[0].header().time <= pair[1].header().time)
++        );
++        assert!(
++            events
++                .iter()
++                .all(|event| event.header().time < samples as u32)
++        );
++        let mut input = [vec![0.0; samples], vec![0.0; samples]];
++        let mut output = input.clone();
++        let mut input_ptrs = [input[0].as_mut_ptr(), input[1].as_mut_ptr()];
++        let mut output_ptrs = [output[0].as_mut_ptr(), output[1].as_mut_ptr()];
++        let input_buffer = clap_audio_buffer {
++            data32: input_ptrs.as_mut_ptr(),
++            data64: ptr::null_mut(),
++            channel_count: 2,
++            latency: 0,
++            constant_mask: 0,
++        };
++        let mut output_buffer = clap_audio_buffer {
++            data32: output_ptrs.as_mut_ptr(),
++            ..input_buffer
++        };
++        let input_events = clap_input_events {
++            ctx: (&mut events as *mut Vec<Event>).cast(),
++            size: Some(event_count),
++            get: Some(event_at),
++        };
++        let mut notes = Vec::<(u32, i16)>::with_capacity(32);
++        let output_events = clap_output_events {
++            ctx: (&mut notes as *mut Vec<_>).cast(),
++            try_push: Some(output_event),
++        };
++        let process = clap_process {
++            steady_time: -1,
++            frames_count: samples as u32,
++            transport: ptr::null(),
++            audio_inputs: &input_buffer,
++            audio_outputs: &mut output_buffer,
++            audio_inputs_count: 1,
++            audio_outputs_count: 1,
++            in_events: &input_events,
++            out_events: &output_events,
++        };
++        unsafe {
++            assert_ne!(
++                (*self.plugin).process.unwrap()(self.plugin, &process),
++                CLAP_PROCESS_ERROR
++            );
++        }
++        (output, notes)
++    }
++}
++impl Drop for Host {
++    fn drop(&mut self) {
++        unsafe {
++            (*self.plugin).stop_processing.unwrap()(self.plugin);
++            (*self.plugin).deactivate.unwrap()(self.plugin);
++            (*self.plugin).destroy.unwrap()(self.plugin);
++        }
++    }
++}
++
++#[test]
++fn first_automation_event_applies_at_its_offset() {
++    for samples in [1, 16, 256] {
++        for time in [0, (samples - 1) as u32 / 2, (samples - 1) as u32] {
++            let mut host = Host::new(true);
++            let (audio, _) = host.process(samples, vec![Event::value(host.param_id, time, 0.5)]);
++            assert!(
++                audio[0][..time as usize].iter().all(|&value| value == 0.0),
++                "early automation at {time} in {samples} samples"
++            );
++            assert!(audio[0][time as usize..].iter().all(|&value| value == 0.5));
++        }
++    }
++}
++
++#[test]
++fn first_modulation_event_applies_at_its_offset() {
++    let mut host = Host::new(true);
++    let (audio, _) = host.process(256, vec![Event::modulation(host.param_id, 137, 0.25)]);
++    assert_eq!(&audio[0][..137], &[0.0; 137]);
++    assert_eq!(&audio[0][137..], &[0.25; 119]);
++}
++
++#[test]
++fn multiple_changes_and_same_sample_groups_preserve_note_offsets() {
++    let mut host = Host::new(true);
++    let id = host.param_id;
++    let (audio, notes) = host.process(
++        256,
++        vec![
++            Event::value(id, 37, 0.25),
++            Event::note(37, 60),
++            Event::value(id, 137, 0.5),
++            Event::modulation(id, 137, 0.25),
++            Event::note(137, 64),
++            Event::note(255, 67),
++        ],
++    );
++    assert_eq!(&audio[0][..37], &[0.0; 37]);
++    assert_eq!(&audio[0][37..137], &[0.25; 100]);
++    assert_eq!(&audio[0][137..], &[0.75; 119]);
++    assert_eq!(notes, [(37, 60), (137, 64), (255, 67)]);
++}
++
++#[test]
++fn leading_note_does_not_hide_a_later_parameter_change() {
++    let mut host = Host::new(true);
++    let (audio, notes) = host.process(
++        256,
++        vec![Event::note(19, 60), Event::value(host.param_id, 137, 0.5)],
++    );
++    assert_eq!(&audio[0][..137], &[0.0; 137]);
++    assert_eq!(&audio[0][137..], &[0.5; 119]);
++    assert_eq!(notes, [(19, 60)]);
++}
++
++#[test]
++fn empty_lists_and_notes_only_preserve_state_and_timing() {
++    let mut host = Host::new(true);
++    let (audio, notes) = host.process(256, vec![]);
++    assert_eq!(audio[0], vec![0.0; 256]);
++    assert!(notes.is_empty());
++    let (audio, notes) = host.process(256, vec![Event::note(19, 60), Event::note(255, 64)]);
++    assert_eq!(audio[0], vec![0.0; 256]);
++    assert_eq!(notes, [(19, 60), (255, 64)]);
++}
++
++#[test]
++fn disabling_sample_accurate_automation_keeps_block_rate_behavior() {
++    let mut host = Host::new(false);
++    let (audio, _) = host.process(256, vec![Event::value(host.param_id, 137, 0.5)]);
++    assert_eq!(audio[0], vec![0.5; 256]);
++}
++
++#[test]
++fn first_transport_event_splits_even_without_sample_accurate_automation() {
++    for sample_accurate in [true, false] {
++        let mut host = Host::new(sample_accurate);
++        let (audio, _) = host.process(256, vec![Event::tempo(137, 90.0)]);
++        assert_eq!(&audio[1][..137], &[120.0; 137]);
++        assert_eq!(&audio[1][137..], &[90.0; 119]);
++    }
++}
++
++#[test]
++fn automation_timeline_is_independent_of_host_block_size() {
++    let changes = [
++        (17, 0.125),
++        (137, 0.5),
++        (255, 0.75),
++        (256, 0.25),
++        (383, 1.0),
++    ];
++    let expected: Vec<f32> = (0..512)
++        .map(|sample| {
++            changes
++                .iter()
++                .rev()
++                .find(|&&(time, _)| time <= sample)
++                .map_or(0.0, |&(_, value)| value as f32)
++        })
++        .collect();
++    for block_size in [1, 16, 64, 256] {
++        let mut host = Host::new(true);
++        let mut rendered = Vec::new();
++        for start in (0..512).step_by(block_size) {
++            let events = changes
++                .iter()
++                .filter(|&&(time, _)| (start..start + block_size).contains(&time))
++                .map(|&(time, value)| Event::value(host.param_id, (time - start) as u32, value))
++                .collect();
++            let (audio, _) = host.process(block_size, events);
++            rendered.extend_from_slice(&audio[0]);
++        }
++        assert_eq!(rendered, expected, "host block size {block_size}");
++    }
++}
+--- /dev/null
++++ b/tests/clap_state_stream.rs
+@@ -0,0 +1,273 @@
++//! State loading through the public CLAP API, including allocation failure injection.
++// This test supplies its own allocator; run without the realtime allocation guard.
++#![cfg(not(feature = "assert_process_allocs"))]
++use clap_sys::{
++    ext::{
++        params::{CLAP_EXT_PARAMS, clap_param_info, clap_plugin_params},
++        state::{CLAP_EXT_STATE, clap_plugin_state},
++    },
++    factory::plugin_factory::{CLAP_PLUGIN_FACTORY_ID, clap_plugin_factory},
++    host::clap_host,
++    stream::clap_istream,
++    version::CLAP_VERSION,
++};
++use nice_plug::prelude::*;
++use std::{
++    alloc::{GlobalAlloc, Layout, System},
++    cell::Cell,
++    ffi::{c_char, c_void},
++    ptr,
++    sync::Arc,
++};
++
++// Only the calling test thread is affected. Never exhaust the machine to test OOM.
++thread_local! {
++    static FAIL_LARGE_ALLOCATION: Cell<bool> = const { Cell::new(false) };
++    static LARGEST_ALLOCATION: Cell<usize> = const { Cell::new(0) };
++    static DENIED_ALLOCATIONS: Cell<usize> = const { Cell::new(0) };
++}
++struct TestAllocator;
++fn deny(size: usize) -> bool {
++    LARGEST_ALLOCATION.with(|largest| largest.set(largest.get().max(size)));
++    let deny = FAIL_LARGE_ALLOCATION.with(|fail| fail.get() && size >= 128 * 1024);
++    if deny {
++        DENIED_ALLOCATIONS.with(|count| count.set(count.get() + 1));
++    }
++    deny
++}
++unsafe impl GlobalAlloc for TestAllocator {
++    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
++        if deny(layout.size()) {
++            ptr::null_mut()
++        } else {
++            unsafe { System.alloc(layout) }
++        }
++    }
++    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
++        if deny(layout.size()) {
++            ptr::null_mut()
++        } else {
++            unsafe { System.alloc_zeroed(layout) }
++        }
++    }
++    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, size: usize) -> *mut u8 {
++        if deny(size) {
++            ptr::null_mut()
++        } else {
++            unsafe { System.realloc(ptr, layout, size) }
++        }
++    }
++    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
++        unsafe { System.dealloc(ptr, layout) }
++    }
++}
++#[global_allocator]
++static ALLOCATOR: TestAllocator = TestAllocator;
++
++#[derive(Params)]
++struct StateParams {
++    #[id = "value"]
++    value: IntParam,
++}
++impl Default for StateParams {
++    fn default() -> Self {
++        Self {
++            value: IntParam::new("Value", 0, IntRange::Linear { min: 0, max: 10 }),
++        }
++    }
++}
++#[derive(Default)]
++struct StateProbe {
++    params: Arc<StateParams>,
++}
++impl Plugin for StateProbe {
++    const NAME: &'static str = "State probe";
++    const VENDOR: &'static str = "NicePlug tests";
++    const URL: &'static str = "";
++    const EMAIL: &'static str = "";
++    const VERSION: &'static str = "0.0.0";
++    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[];
++    type Editor = ();
++    type SysExMessage = ();
++    type BackgroundTask = ();
++    fn params(&self) -> Arc<dyn Params> {
++        self.params.clone()
++    }
++    fn process(
++        &mut self,
++        _: &mut Buffer,
++        _: &mut AuxiliaryBuffers,
++        _: &mut impl ProcessContext<Self>,
++    ) -> ProcessStatus {
++        ProcessStatus::Normal
++    }
++}
++impl ClapPlugin for StateProbe {
++    const CLAP_ID: &'static str = "test.state-stream";
++    const CLAP_DESCRIPTION: Option<&'static str> = None;
++    const CLAP_MANUAL_URL: Option<&'static str> = None;
++    const CLAP_SUPPORT_URL: Option<&'static str> = None;
++    const CLAP_FEATURES: &'static [ClapFeature] = &[ClapFeature::Utility];
++}
++nice_export_clap!(StateProbe);
++
++// Generate padding in the callback so the large-state test needs only one large buffer.
++// A valid JSON document followed by whitespace exercises the same envelope size as
++// a large sample payload without allocating a second huge deserialized object.
++const JSON: &[u8] = br#"{"version":"0.0.0","params":{"value":{"i32":7}},"fields":{}}"#;
++struct Input {
++    declared: u64,
++    available: usize,
++    position: usize,
++    max_read: usize,
++    end_result: i64,
++}
++unsafe extern "C" fn read(stream: *const clap_istream, data: *mut c_void, size: u64) -> i64 {
++    let input = unsafe { &mut *((*stream).ctx as *mut Input) };
++    let remaining = (8 + input.available).saturating_sub(input.position);
++    if remaining == 0 {
++        return input.end_result;
++    }
++    let count = remaining.min(size as usize).min(input.max_read);
++    let destination = unsafe { std::slice::from_raw_parts_mut(data.cast::<u8>(), count) };
++    let prefix = input.declared.to_le_bytes();
++    // Most reads are padding; fill those without a byte-by-byte loop in debug tests.
++    destination.fill(b' ');
++    for (index, byte) in destination
++        .iter_mut()
++        .enumerate()
++        .take((8 + JSON.len()).saturating_sub(input.position))
++    {
++        let offset = input.position + index;
++        *byte = if offset < 8 {
++            prefix[offset]
++        } else {
++            JSON[offset - 8]
++        };
++    }
++    input.position += count;
++    count as i64
++}
++unsafe extern "C" fn extension(_: *const clap_host, _: *const c_char) -> *const c_void {
++    ptr::null()
++}
++
++fn load(input: &mut Input, fail_allocation: bool) -> (bool, usize, usize) {
++    let host = clap_host {
++        clap_version: CLAP_VERSION,
++        host_data: ptr::null_mut(),
++        name: c"State test host".as_ptr(),
++        vendor: c"NicePlug tests".as_ptr(),
++        url: c"".as_ptr(),
++        version: c"1".as_ptr(),
++        get_extension: Some(extension),
++        request_restart: None,
++        request_process: None,
++        request_callback: None,
++    };
++    unsafe {
++        assert!(clap_entry.init.unwrap()(c"test".as_ptr()));
++        let factory = &*(clap_entry.get_factory.unwrap()(CLAP_PLUGIN_FACTORY_ID.as_ptr())
++            as *const clap_plugin_factory);
++        let plugin = factory.create_plugin.unwrap()(factory, &host, c"test.state-stream".as_ptr());
++        assert!(!plugin.is_null());
++        assert!((*plugin).init.unwrap()(plugin));
++        let state = &*((*plugin).get_extension.unwrap()(plugin, CLAP_EXT_STATE.as_ptr())
++            as *const clap_plugin_state);
++        let stream = clap_istream {
++            ctx: (input as *mut Input).cast(),
++            read: Some(read),
++        };
++        LARGEST_ALLOCATION.with(|v| v.set(0));
++        DENIED_ALLOCATIONS.with(|v| v.set(0));
++        FAIL_LARGE_ALLOCATION.with(|v| v.set(fail_allocation));
++        let success = state.load.unwrap()(plugin, &stream);
++        FAIL_LARGE_ALLOCATION.with(|v| v.set(false));
++        let largest = LARGEST_ALLOCATION.with(Cell::get);
++        let denied = DENIED_ALLOCATIONS.with(Cell::get);
++        let params = &*((*plugin).get_extension.unwrap()(plugin, CLAP_EXT_PARAMS.as_ptr())
++            as *const clap_plugin_params);
++        let mut info = std::mem::zeroed::<clap_param_info>();
++        assert!(params.get_info.unwrap()(plugin, 0, &mut info));
++        let mut value = -1.0;
++        assert!(params.get_value.unwrap()(plugin, info.id, &mut value));
++        let expected = if success { 7.0 } else { 0.0 };
++        // CLAP's plain value passes through a normalized f32 in this wrapper.
++        assert!(
++            (value - expected).abs() < 1e-6,
++            "state value {value}, expected {expected}"
++        );
++        (*plugin).destroy.unwrap()(plugin);
++        clap_entry.deinit.unwrap()();
++        (success, largest, denied)
++    }
++}
++fn input(declared: u64, available: usize) -> Input {
++    Input {
++        declared,
++        available,
++        position: 0,
++        max_read: usize::MAX,
++        end_result: 0,
++    }
++}
++
++#[test]
++fn valid_states_cross_chunk_boundaries_and_preserve_envelope_end() {
++    for length in [JSON.len(), 65535, 65536, 65537, 3 * 65536 + 17] {
++        let mut input = input(length as u64, length + 13);
++        input.max_read = 997;
++        assert!(load(&mut input, false).0, "length {length}");
++        assert_eq!(
++            input.position,
++            8 + length,
++            "must not consume the next envelope"
++        );
++    }
++}
++#[test]
++fn valid_state_larger_than_previous_cap() {
++    let length = 256 * 1024 * 1024 + 1;
++    let mut input = input(length as u64, length);
++    assert!(load(&mut input, false).0);
++    assert_eq!(input.position, 8 + length);
++}
++#[test]
++fn huge_truncated_state_does_not_reserve_declared_length() {
++    for declared in [u64::MAX, isize::MAX as u64, 8_028_074_745_930_326_651] {
++        let mut input = input(declared, JSON.len());
++        let (success, largest, _) = load(&mut input, false);
++        assert!(!success);
++        assert!(
++            largest <= 65536,
++            "requested {largest} for only a few input bytes"
++        );
++    }
++}
++#[test]
++fn stream_errors_and_truncation_fail() {
++    for available in [0, JSON.len(), 65536 + 19] {
++        for error in [0, -1] {
++            let mut input = input(3 * 65536, available);
++            input.max_read = 7;
++            input.end_result = error;
++            assert!(!load(&mut input, false).0);
++        }
++    }
++}
++#[test]
++fn allocation_failure_returns_false_without_aborting() {
++    let mut input = input(3 * 65536, 3 * 65536);
++    let (success, _, denied) = load(&mut input, true);
++    assert!(!success);
++    assert!(denied > 0, "must exercise a refused allocation");
++    assert!(input.position < 8 + input.available);
++}
++
++#[test]
++fn stream_overreport_is_rejected() {
++    let mut input = input(65536, JSON.len());
++    // The callback claims more bytes than requested but does not actually write them.
++    input.end_result = i64::MAX;
++    assert!(!load(&mut input, false).0);
++}
+--- a/src/wrapper/clap.rs
++++ b/src/wrapper/clap.rs
+@@ -34,6 +34,10 @@
+     /// Keywords describing the plugin. The host may use this to classify the plugin in its plugin
+     /// browser.
+     const CLAP_FEATURES: &'static [ClapFeature];
++
++    /// Advertise MIDI MPE input in addition to ordinary MIDI and native CLAP notes.
++    /// The plugin must implement channel allocation, zone controls and bend ranges.
++    const CLAP_SUPPORTS_MPE: bool = false;
+ 
+     /// If set, this informs the host about the plugin's capabilities for polyphonic modulation.
+     const CLAP_POLY_MODULATION_CONFIG: Option<PolyModulationConfig> = None;
+--- a/src/wrapper/vst3/note_expressions.rs
++++ b/src/wrapper/vst3/note_expressions.rs
+@@ -9,7 +9,7 @@
+ type NoteId = i32;
+ 
+ /// The number of notes we'll keep track of for mapping note IDs to channel+note combinations.
+-const NOTE_IDS_LEN: usize = 32;
++const NOTE_IDS_LEN: usize = 128;
+ 
+ /// `kVolumeTypeID`
+ pub const VOLUME_EXPRESSION_ID: u32 = 0;
+@@ -64,11 +64,11 @@
+ /// expressions are identified only with a note ID. To account for that, we'll keep track of the
+ /// most recent note IDs we've encountered so we can later map those IDs back to a note and channel
+ /// combination.
+-#[derive(Debug, Default)]
++#[derive(Debug)]
+ pub struct NoteExpressionController {
+-    /// The last 32 note IDs we've seen. We'll do a linear search every time we receive a note
++    /// The most recent note IDs we've seen. We'll do a linear search every time we receive a note
+     /// expression value event to find the matching note and channel.
+-    note_ids: [(NoteId, MidiNote, MidiChannel); NOTE_IDS_LEN],
++    note_ids: [Option<(NoteId, MidiNote, MidiChannel)>; NOTE_IDS_LEN],
+     /// The index in the `note_ids` ring buffer the next event should be inserted at, wraps back
+     /// around to 0 when reaching the end.
+     note_ids_idx: usize,
+@@ -88,12 +88,32 @@
+     pub unit: &'static str,
+ }
+ 
++impl Default for NoteExpressionController {
++    fn default() -> Self {
++        Self {
++            note_ids: [None; NOTE_IDS_LEN],
++            note_ids_idx: 0,
++        }
++    }
++}
++
+ impl NoteExpressionController {
+     /// Register the note ID from a note on event so it can later be retrieved when handling a note
+     /// expression value event.
+     pub fn register_note(&mut self, event: &NoteOnEvent) {
+-        self.note_ids[self.note_ids_idx] = (event.noteId, event.pitch as u8, event.channel as u8);
+-        self.note_ids_idx = (self.note_ids_idx + 1) % NOTE_IDS_LEN;
++        if event.noteId < 0 {
++            return;
++        }
++        let index = self
++            .note_ids
++            .iter()
++            .position(|entry| entry.is_some_and(|(id, _, _)| id == event.noteId))
++            .unwrap_or_else(|| {
++                let index = self.note_ids_idx;
++                self.note_ids_idx = (index + 1) % NOTE_IDS_LEN;
++                index
++            });
++        self.note_ids[index] = Some((event.noteId, event.pitch as u8, event.channel as u8));
+     }
+ 
+     /// Translate the note expression value event into an internal nice-plug event, if we handle the
+@@ -105,10 +125,18 @@
+         event: &NoteExpressionValueEvent,
+     ) -> Option<NoteEvent<S>> {
+         // We're calling it a voice ID, VST3 (and CLAP) calls it a note ID
+-        let (note_id, note, channel) = *self
++        if event.noteId < 0 || !event.value.is_finite() {
++            return None;
++        }
++        // The ID remains authoritative even after the bounded address cache wraps.
++        // Do not drop expression for a long-held voice just because other notes played.
++        let (note_id, note, channel) = self
+             .note_ids
+             .iter()
+-            .find(|(note_id, _, _)| *note_id == event.noteId)?;
++            .flatten()
++            .find(|(id, _, _)| *id == event.noteId)
++            .copied()
++            .unwrap_or((event.noteId, u8::MAX, u8::MAX));
+ 
+         match event.typeId {
+             VOLUME_EXPRESSION_ID => Some(NoteEvent::PolyVolume {
+@@ -144,19 +172,19 @@
+                 note,
+                 vibrato: event.value as f32,
+             }),
+-            EXPRESSION_EXPRESSION_ID => Some(NoteEvent::PolyBrightness {
++            EXPRESSION_EXPRESSION_ID => Some(NoteEvent::PolyExpression {
++                timing,
++                voice_id: Some(note_id),
++                channel,
++                note,
++                expression: event.value as f32,
++            }),
++            BRIGHTNESS_EXPRESSION_ID => Some(NoteEvent::PolyBrightness {
+                 timing,
+                 voice_id: Some(note_id),
+                 channel,
+                 note,
+                 brightness: event.value as f32,
+-            }),
+-            BRIGHTNESS_EXPRESSION_ID => Some(NoteEvent::PolyExpression {
+-                timing,
+-                voice_id: Some(note_id),
+-                channel,
+-                note,
+-                expression: event.value as f32,
+             }),
+             _ => None,
+         }
+--- a/src/wrapper/vst3/wrapper.rs
++++ b/src/wrapper/vst3/wrapper.rs
+@@ -988,6 +988,7 @@
+                 }
+             };
+ 
++            *self.inner.note_expression_controller.borrow_mut() = NoteExpressionController::default();
+             process_wrapper(|| plugin.reset());
+         }
+ 
+@@ -1165,6 +1166,16 @@
+                                 note: event.pitch as u8,
+                                 velocity: event.velocity,
+                             }));
++                            // NoteOnEvent tuning is in cents; common tuning is in semitones.
++                            if event.tuning.is_finite() && event.tuning != 0.0 {
++                                process_events.push(ProcessEvent::NoteEvent(NoteEvent::PolyTuning {
++                                    timing,
++                                    voice_id: (event.noteId >= 0).then_some(event.noteId),
++                                    channel: event.channel as u8,
++                                    note: event.pitch as u8,
++                                    tuning: event.tuning / 100.0,
++                                }));
++                            }
+                         } else if event.r#type == EventTypes_::kNoteOffEvent as u16 {
+                             let event = unsafe { event.__field0.noteOff };
+                             process_events.push(ProcessEvent::NoteEvent(NoteEvent::NoteOff {
+@@ -1818,7 +1829,12 @@
+         // This should not be needed since they're predefined, but then again you'd think you also
+         // wouldn't need to define predefined note expressions now do you?
+         info.valueDesc = NoteExpressionValueDescription {
+-            defaultValue: 0.5,
++            defaultValue: match note_expression_info.type_id {
++                note_expressions::VOLUME_EXPRESSION_ID => 0.25,
++                note_expressions::VIBRATO_EXPRESSION_ID => 0.0,
++                note_expressions::EXPRESSION_EXPRESSION_ID => 1.0,
++                _ => 0.5,
++            },
+             minimum: 0.0,
+             maximum: 1.0,
+             stepCount: 0,
+--- /dev/null
++++ b/tests/note_expressions.rs
+@@ -0,0 +1,546 @@
++//! Native expression conversion through actual wrapper code and the CLAP entry point.
++#[path = "../src/wrapper/vst3/note_expressions.rs"]
++mod vst3_expressions;
++use clap_sys::{
++    audio_buffer::clap_audio_buffer,
++    events::*,
++    ext::params::{CLAP_EXT_PARAMS, clap_param_info, clap_plugin_params},
++    factory::plugin_factory::{CLAP_PLUGIN_FACTORY_ID, clap_plugin_factory},
++    host::clap_host,
++    plugin::clap_plugin,
++    process::{CLAP_PROCESS_ERROR, clap_process},
++    version::CLAP_VERSION,
++};
++use nice_plug::prelude::*;
++use std::{
++    ffi::{c_char, c_void},
++    num::NonZeroU32,
++    ptr,
++    sync::Arc,
++};
++
++#[derive(Params)]
++struct ProbeParams {
++    #[id = "value"]
++    value: FloatParam,
++}
++impl Default for ProbeParams {
++    fn default() -> Self {
++        Self {
++            value: FloatParam::new("Value", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
++        }
++    }
++}
++
++#[derive(Default)]
++struct TimingProbe<const SAMPLE_ACCURATE: bool> {
++    params: Arc<ProbeParams>,
++}
++impl<const SAMPLE_ACCURATE: bool> Plugin for TimingProbe<SAMPLE_ACCURATE> {
++    const NAME: &'static str = "CLAP timing probe";
++    const VENDOR: &'static str = "NicePlug tests";
++    const URL: &'static str = "";
++    const EMAIL: &'static str = "";
++    const VERSION: &'static str = "0.0.0";
++    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
++        main_input_channels: NonZeroU32::new(2),
++        main_output_channels: NonZeroU32::new(2),
++        ..AudioIOLayout::const_default()
++    }];
++    const SAMPLE_ACCURATE_AUTOMATION: bool = SAMPLE_ACCURATE;
++    const MIDI_INPUT: MidiConfig = MidiConfig::MidiCCs;
++    const MIDI_OUTPUT: MidiConfig = MidiConfig::Basic;
++    type Editor = ();
++    type SysExMessage = ();
++    type BackgroundTask = ();
++
++    fn params(&self) -> Arc<dyn Params> {
++        self.params.clone()
++    }
++
++    fn process(
++        &mut self,
++        buffer: &mut Buffer,
++        _: &mut AuxiliaryBuffers,
++        context: &mut impl ProcessContext<Self>,
++    ) -> ProcessStatus {
++        // No smoothing, latency, worker or GUI can mask the time the wrapper applies a change.
++        buffer.as_slice()[0].fill(self.params.value.value());
++        buffer.as_slice()[1].fill(context.transport().tempo.unwrap_or(120.0) as f32);
++        while let Some(event) = context.next_event() {
++            let value = match event {
++                NoteEvent::PolyTuning { tuning, .. } => Some(tuning),
++                NoteEvent::PolyVolume { gain, .. } => Some(gain),
++                NoteEvent::PolyPan { pan, .. } => Some(pan),
++                NoteEvent::PolyBrightness { brightness, .. } => Some(brightness),
++                NoteEvent::PolyPressure { pressure, .. } => Some(pressure),
++                NoteEvent::PolyExpression { expression, .. } => Some(expression),
++                _ => None,
++            };
++            if let Some(value) = value {
++                buffer.as_slice()[0][event.timing() as usize] = value;
++            }
++            context.send_event(event);
++        }
++        ProcessStatus::Normal
++    }
++}
++impl<const SAMPLE_ACCURATE: bool> ClapPlugin for TimingProbe<SAMPLE_ACCURATE> {
++    const CLAP_SUPPORTS_MPE: bool = SAMPLE_ACCURATE;
++    const CLAP_ID: &'static str = if SAMPLE_ACCURATE {
++        "test.sample-accurate"
++    } else {
++        "test.block-rate"
++    };
++    const CLAP_DESCRIPTION: Option<&'static str> = None;
++    const CLAP_MANUAL_URL: Option<&'static str> = None;
++    const CLAP_SUPPORT_URL: Option<&'static str> = None;
++    const CLAP_FEATURES: &'static [ClapFeature] = &[ClapFeature::AudioEffect];
++}
++nice_export_clap!(TimingProbe<true>, TimingProbe<false>);
++
++// The event payloads and list are owned by the caller for the entire process call.
++#[allow(dead_code)]
++enum Event {
++    Expression(clap_event_note_expression),
++    Value(clap_event_param_value),
++    Modulation(clap_event_param_mod),
++    Note(clap_event_note),
++    Transport(clap_event_transport),
++}
++#[allow(dead_code)]
++impl Event {
++    fn header(&self) -> &clap_event_header {
++        match self {
++            Self::Expression(event) => &event.header,
++            Self::Value(event) => &event.header,
++            Self::Modulation(event) => &event.header,
++            Self::Note(event) => &event.header,
++            Self::Transport(event) => &event.header,
++        }
++    }
++
++    fn value(param_id: u32, time: u32, value: f64) -> Self {
++        Self::Value(clap_event_param_value {
++            header: header::<clap_event_param_value>(CLAP_EVENT_PARAM_VALUE, time),
++            param_id,
++            cookie: ptr::null_mut(),
++            note_id: -1,
++            port_index: -1,
++            channel: -1,
++            key: -1,
++            value,
++        })
++    }
++
++    fn modulation(param_id: u32, time: u32, amount: f64) -> Self {
++        Self::Modulation(clap_event_param_mod {
++            header: header::<clap_event_param_mod>(CLAP_EVENT_PARAM_MOD, time),
++            param_id,
++            cookie: ptr::null_mut(),
++            note_id: -1,
++            port_index: -1,
++            channel: -1,
++            key: -1,
++            amount,
++        })
++    }
++
++    fn note(time: u32, key: i16) -> Self {
++        Self::Note(clap_event_note {
++            header: header::<clap_event_note>(CLAP_EVENT_NOTE_ON, time),
++            note_id: key as i32,
++            port_index: 0,
++            channel: 0,
++            key,
++            velocity: 1.0,
++        })
++    }
++
++    fn tempo(time: u32, tempo: f64) -> Self {
++        Self::Transport(clap_event_transport {
++            header: header::<clap_event_transport>(CLAP_EVENT_TRANSPORT, time),
++            flags: CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_IS_PLAYING,
++            tempo,
++            // No song position: transport-origin reconstruction is a separate contract.
++            ..unsafe { std::mem::zeroed() }
++        })
++    }
++}
++
++fn header<T>(type_: u16, time: u32) -> clap_event_header {
++    clap_event_header {
++        size: std::mem::size_of::<T>() as u32,
++        time,
++        space_id: CLAP_CORE_EVENT_SPACE_ID,
++        type_,
++        flags: 0,
++    }
++}
++
++unsafe extern "C" fn host_extension(_: *const clap_host, _: *const c_char) -> *const c_void {
++    ptr::null()
++}
++unsafe extern "C" fn event_count(list: *const clap_input_events) -> u32 {
++    unsafe { (&*((*list).ctx as *const Vec<Event>)).len() as u32 }
++}
++unsafe extern "C" fn event_at(
++    list: *const clap_input_events,
++    index: u32,
++) -> *const clap_event_header {
++    unsafe { (&*((*list).ctx as *const Vec<Event>))[index as usize].header() }
++}
++unsafe extern "C" fn output_event(
++    list: *const clap_output_events,
++    event: *const clap_event_header,
++) -> bool {
++    unsafe {
++        let notes = &mut *((*list).ctx as *mut Vec<Event>);
++        if notes.len() == notes.capacity() {
++            return false;
++        }
++        match (*event).type_ {
++            CLAP_EVENT_NOTE_EXPRESSION => notes.push(Event::Expression(
++                *(event as *const clap_event_note_expression),
++            )),
++            CLAP_EVENT_NOTE_ON | CLAP_EVENT_NOTE_OFF | CLAP_EVENT_NOTE_CHOKE => {
++                notes.push(Event::Note(*(event as *const clap_event_note)))
++            }
++            _ => {}
++        }
++    }
++    true
++}
++
++struct Host {
++    plugin: *const clap_plugin,
++    // Heap allocation keeps the host address stable until after plugin destruction.
++    _host: Box<clap_host>,
++}
++impl Host {
++    fn new(sample_accurate: bool) -> Self {
++        let host = Box::new(clap_host {
++            clap_version: CLAP_VERSION,
++            host_data: ptr::null_mut(),
++            name: c"Timing test host".as_ptr(),
++            vendor: c"NicePlug tests".as_ptr(),
++            url: c"".as_ptr(),
++            version: c"1".as_ptr(),
++            get_extension: Some(host_extension),
++            request_restart: None,
++            request_process: None,
++            request_callback: None,
++        });
++        unsafe {
++            assert!(clap_entry.init.unwrap()(c"test".as_ptr()));
++            let factory = &*(clap_entry.get_factory.unwrap()(CLAP_PLUGIN_FACTORY_ID.as_ptr())
++                as *const clap_plugin_factory);
++            let descriptor =
++                factory.get_plugin_descriptor.unwrap()(factory, u32::from(!sample_accurate));
++            let plugin = factory.create_plugin.unwrap()(factory, &*host, (*descriptor).id);
++            assert!(!plugin.is_null());
++            assert!((*plugin).init.unwrap()(plugin));
++            let params = &*((*plugin).get_extension.unwrap()(plugin, CLAP_EXT_PARAMS.as_ptr())
++                as *const clap_plugin_params);
++            let mut info = std::mem::zeroed::<clap_param_info>();
++            assert!(params.get_info.unwrap()(plugin, 0, &mut info));
++            assert!((*plugin).activate.unwrap()(plugin, 48_000.0, 1, 256));
++            assert!((*plugin).start_processing.unwrap()(plugin));
++            Self {
++                plugin,
++                _host: host,
++            }
++        }
++    }
++
++    fn process(&mut self, samples: usize, mut events: Vec<Event>) -> ([Vec<f32>; 2], Vec<Event>) {
++        assert!((1..=256).contains(&samples));
++        assert!(
++            events
++                .windows(2)
++                .all(|pair| pair[0].header().time <= pair[1].header().time)
++        );
++        assert!(
++            events
++                .iter()
++                .all(|event| event.header().time < samples as u32)
++        );
++        let mut input = [vec![0.0; samples], vec![0.0; samples]];
++        let mut output = input.clone();
++        let mut input_ptrs = [input[0].as_mut_ptr(), input[1].as_mut_ptr()];
++        let mut output_ptrs = [output[0].as_mut_ptr(), output[1].as_mut_ptr()];
++        let input_buffer = clap_audio_buffer {
++            data32: input_ptrs.as_mut_ptr(),
++            data64: ptr::null_mut(),
++            channel_count: 2,
++            latency: 0,
++            constant_mask: 0,
++        };
++        let mut output_buffer = clap_audio_buffer {
++            data32: output_ptrs.as_mut_ptr(),
++            ..input_buffer
++        };
++        let input_events = clap_input_events {
++            ctx: (&mut events as *mut Vec<Event>).cast(),
++            size: Some(event_count),
++            get: Some(event_at),
++        };
++        let mut notes = Vec::<Event>::with_capacity(32);
++        let output_events = clap_output_events {
++            ctx: (&mut notes as *mut Vec<_>).cast(),
++            try_push: Some(output_event),
++        };
++        let process = clap_process {
++            steady_time: -1,
++            frames_count: samples as u32,
++            transport: ptr::null(),
++            audio_inputs: &input_buffer,
++            audio_outputs: &mut output_buffer,
++            audio_inputs_count: 1,
++            audio_outputs_count: 1,
++            in_events: &input_events,
++            out_events: &output_events,
++        };
++        unsafe {
++            assert_ne!(
++                (*self.plugin).process.unwrap()(self.plugin, &process),
++                CLAP_PROCESS_ERROR
++            );
++        }
++        (output, notes)
++    }
++}
++impl Drop for Host {
++    fn drop(&mut self) {
++        unsafe {
++            (*self.plugin).stop_processing.unwrap()(self.plugin);
++            (*self.plugin).deactivate.unwrap()(self.plugin);
++            (*self.plugin).destroy.unwrap()(self.plugin);
++        }
++    }
++}
++
++#[test]
++fn clap_normalizes_all_five_expressions_and_preserves_wildcard_addresses() {
++    let mut host = Host::new(true);
++    let expressions = [
++        (CLAP_NOTE_EXPRESSION_TUNING, 1.25, 1.25),
++        (CLAP_NOTE_EXPRESSION_VOLUME, 2.0, 2.0),
++        (CLAP_NOTE_EXPRESSION_PAN, 0.25, -0.5),
++        (CLAP_NOTE_EXPRESSION_BRIGHTNESS, 0.8, 0.8),
++        (CLAP_NOTE_EXPRESSION_PRESSURE, 0.7, 0.7),
++        (CLAP_NOTE_EXPRESSION_EXPRESSION, 0.3, 0.3),
++    ];
++    let mut events = vec![Event::note(0, 60)];
++    events.extend(
++        expressions
++            .iter()
++            .enumerate()
++            .map(|(index, (id, value, _))| {
++                Event::Expression(clap_event_note_expression {
++                    header: header::<clap_event_note_expression>(
++                        CLAP_EVENT_NOTE_EXPRESSION,
++                        index as u32 + 10,
++                    ),
++                    expression_id: *id,
++                    note_id: 60,
++                    port_index: 0,
++                    channel: -1,
++                    key: -1,
++                    value: *value,
++                })
++            }),
++    );
++    let (audio, output) = host.process(64, events);
++    for (index, (_, _, expected)) in expressions.iter().enumerate() {
++        assert!((audio[0][index + 10] - *expected as f32).abs() < 1e-6);
++    }
++    assert_eq!(output.len(), 7);
++    for (actual, (id, value, _)) in output[1..].iter().zip(expressions) {
++        let Event::Expression(actual) = actual else {
++            panic!("expected expression");
++        };
++        assert_eq!(
++            (
++                actual.expression_id,
++                actual.note_id,
++                actual.channel,
++                actual.key
++            ),
++            (id, 60, -1, -1)
++        );
++        assert!((actual.value - value).abs() < 1e-6);
++    }
++}
++
++#[test]
++fn clap_wildcard_note_off_and_choke_round_trip_and_native_zero_velocity_survives() {
++    let mut host = Host::new(true);
++    let events = [
++        CLAP_EVENT_NOTE_ON,
++        CLAP_EVENT_NOTE_OFF,
++        CLAP_EVENT_NOTE_CHOKE,
++    ]
++    .into_iter()
++    .enumerate()
++    .map(|(i, kind)| {
++        Event::Note(clap_event_note {
++            header: header::<clap_event_note>(kind, i as u32),
++            note_id: 42,
++            port_index: 0,
++            channel: if i == 0 { 2 } else { -1 },
++            key: if i == 0 { 60 } else { -1 },
++            velocity: 0.0,
++        })
++    })
++    .collect();
++    let (_, events) = host.process(64, events);
++    // Choke output is not represented by the current wrapper; input behavior is
++    // covered in Weft. Note-off and note-on must preserve their native addresses.
++    assert!(
++        matches!(&events[0], Event::Note(e) if e.header.type_ == CLAP_EVENT_NOTE_ON && e.velocity == 0.0)
++    );
++    assert!(
++        matches!(&events[1], Event::Note(e) if e.header.type_ == CLAP_EVENT_NOTE_OFF && e.channel == -1 && e.key == -1)
++    );
++}
++
++#[test]
++fn clap_advertises_mpe_only_when_opted_in() {
++    use clap_sys::ext::note_ports::*;
++    for enabled in [false, true] {
++        let host = Host::new(enabled);
++        unsafe {
++            let ports =
++                &*((*host.plugin).get_extension.unwrap()(host.plugin, CLAP_EXT_NOTE_PORTS.as_ptr())
++                    as *const clap_plugin_note_ports);
++            let mut info = std::mem::zeroed();
++            assert!(ports.get.unwrap()(host.plugin, 0, true, &mut info));
++            assert_eq!(
++                info.supported_dialects & CLAP_NOTE_DIALECT_MIDI_MPE != 0,
++                enabled
++            );
++            assert_eq!(info.preferred_dialect, CLAP_NOTE_DIALECT_CLAP);
++        }
++    }
++}
++
++fn vst_note(id: i32, pitch: i16) -> vst3::Steinberg::Vst::NoteOnEvent {
++    vst3::Steinberg::Vst::NoteOnEvent {
++        channel: 2,
++        pitch,
++        tuning: 0.0,
++        velocity: 1.0,
++        length: 0,
++        noteId: id,
++    }
++}
++fn vst_expression(
++    id: i32,
++    kind: u32,
++    value: f64,
++) -> vst3::Steinberg::Vst::NoteExpressionValueEvent {
++    vst3::Steinberg::Vst::NoteExpressionValueEvent {
++        noteId: id,
++        typeId: kind,
++        value,
++    }
++}
++#[test]
++fn vst3_round_trips_distinct_expression_types_and_units() {
++    use vst3_expressions::*;
++    let mut controller = NoteExpressionController::default();
++    controller.register_note(&vst_note(42, 60));
++    let cases = [
++        NoteEvent::PolyTuning {
++            timing: 19,
++            voice_id: Some(42),
++            channel: 2,
++            note: 60,
++            tuning: 7.5,
++        },
++        NoteEvent::PolyVolume {
++            timing: 19,
++            voice_id: Some(42),
++            channel: 2,
++            note: 60,
++            gain: 2.0,
++        },
++        NoteEvent::PolyPan {
++            timing: 19,
++            voice_id: Some(42),
++            channel: 2,
++            note: 60,
++            pan: -0.5,
++        },
++        NoteEvent::PolyBrightness {
++            timing: 19,
++            voice_id: Some(42),
++            channel: 2,
++            note: 60,
++            brightness: 0.75,
++        },
++        NoteEvent::PolyExpression {
++            timing: 19,
++            voice_id: Some(42),
++            channel: 2,
++            note: 60,
++            expression: 0.25,
++        },
++    ];
++    for event in cases {
++        let raw = NoteExpressionController::translate_event_reverse(42, &event).unwrap();
++        assert_eq!(controller.translate_event::<()>(19, &raw), Some(event));
++    }
++}
++#[test]
++fn vst3_long_held_ids_survive_cache_wrap_and_reused_ids_use_latest_address() {
++    use vst3_expressions::*;
++    let mut controller = NoteExpressionController::default();
++    controller.register_note(&vst_note(0, 60));
++    for id in 1..300 {
++        controller.register_note(&vst_note(id, 64));
++    }
++    assert!(matches!(
++        controller.translate_event::<()>(19, &vst_expression(0, TUNING_EXPRESSION_ID, 0.5)),
++        Some(NoteEvent::PolyTuning {
++            voice_id: Some(0),
++            channel: 255,
++            note: 255,
++            timing: 19,
++            tuning: 0.0
++        })
++    ));
++    controller.register_note(&vst_note(299, 72));
++    assert!(matches!(
++        controller.translate_event::<()>(0, &vst_expression(299, PAN_EXPRESSION_ID, 0.5)),
++        Some(NoteEvent::PolyPan {
++            channel: 2,
++            note: 72,
++            ..
++        })
++    ));
++    assert!(
++        controller
++            .translate_event::<()>(0, &vst_expression(-1, PAN_EXPRESSION_ID, 0.5))
++            .is_none()
++    );
++    assert!(
++        controller
++            .translate_event::<()>(0, &vst_expression(299, PAN_EXPRESSION_ID, f64::NAN))
++            .is_none()
++    );
++}
++
++#[test]
++fn vst3_expression_catalog_has_distinct_standard_types() {
++    use vst3_expressions::*;
++    assert_eq!(KNOWN_NOTE_EXPRESSIONS.len(), 6);
++    for (id, info) in KNOWN_NOTE_EXPRESSIONS.iter().enumerate() {
++        assert_eq!(info.type_id, id as u32);
++        assert!(!info.title.is_empty());
++        if id == 0 {
++            assert_eq!(info.unit, "dB");
++        }
++    }
++}

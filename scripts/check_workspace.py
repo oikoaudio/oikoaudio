@@ -120,6 +120,42 @@ def test_vendor(flags):
             run("cargo", "test", "--lib", *options, cwd=package)
 
 
+def test_clap_wrapper(flags):
+    # Separate consumers keep the state test's fault-injecting allocator independent
+    # of the timing test's realtime allocation guard.
+    for test, features in (("clap_event_timing", '"assert_process_allocs", "editor", "vst3"'),
+                           ("note_expressions", '"assert_process_allocs", "editor", "vst3"'),
+                           ("clap_state_stream", '"editor", "vst3"')):
+        with tempfile.TemporaryDirectory(prefix="oiko-clap-test-") as temporary:
+            package = Path(temporary)
+            manifest = f'''[package]
+name = "oiko-{test.replace('_', '-')}-tests"
+version = "0.0.0"
+edition = "2024"
+
+[features]
+assert_process_allocs = []
+
+[dependencies]
+nice-plug = {{ path = "{(ROOT / 'vendor/nice-plug').as_posix()}", default-features = false, features = [{features}] }}
+clap-sys = "0.5.0"
+vst3 = "0.3.0"
+nice-plug-core = {{ path = "{(ROOT / 'vendor/nice-plug-core').as_posix()}" }}
+
+[patch.crates-io]
+nice-plug-core = {{ path = "{(ROOT / 'vendor/nice-plug-core').as_posix()}" }}
+
+[[test]]
+name = "{test}"
+path = "{(ROOT / 'vendor/nice-plug/tests' / (test + '.rs')).as_posix()}"
+'''
+            (package / "Cargo.toml").write_text(manifest)
+            shutil.copyfile(ROOT / "Cargo.lock", package / "Cargo.lock")
+            options = ["--offline"] if "--offline" in flags else []
+            run("cargo", "test", "--test", test, "--target-dir", str(ROOT / "target"),
+                *options, cwd=package)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--test", action="store_true")
@@ -135,6 +171,7 @@ def main():
         # Individual selection catches dependencies hidden by workspace feature unification.
         for package in (product.package for product in products().values()):
             run("cargo", "test", "-p", package, *flags)
+        test_clap_wrapper(flags)
         test_vendor(flags)
 
 

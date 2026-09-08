@@ -993,20 +993,18 @@ impl<P: ClapPlugin> Wrapper<P> {
         let mut input_events = self.input_events.borrow_mut();
         input_events.clear();
 
-        // To achieve this, we'll always read one event ahead
         let num_events = unsafe {
             clap_call! { in_=>size(in_) }
         };
-        if num_events == 0 {
-            return None;
-        }
-
-        let start_idx = resume_from_event_idx as u32;
-        let mut event: *const clap_event_header = unsafe {
-            clap_call! { in_=>get(in_, start_idx) }
-        };
-        for next_event_idx in (start_idx + 1)..num_events {
+        for event_idx in (resume_from_event_idx as u32)..num_events {
             unsafe {
+                let event: *const clap_event_header = clap_call! { in_=>get(in_, event_idx) };
+                // Check the current event before applying it, including the first event in the
+                // buffer. A later parameter or transport change belongs to the next process slice.
+                if (*event).time > current_sample_idx as u32 && stop_predicate(event) {
+                    return Some(((*event).time as usize, event_idx as usize));
+                }
+
                 self.handle_in_event(
                     event,
                     &mut input_events,
@@ -1014,26 +1012,7 @@ impl<P: ClapPlugin> Wrapper<P> {
                     current_sample_idx,
                     total_buffer_len,
                 );
-                // Stop just before the next parameter change or transport information event at a sample
-                // after the current sample
-                let next_event: *const clap_event_header =
-                    clap_call! { in_=>get(in_, next_event_idx) };
-                if (*next_event).time > current_sample_idx as u32 && stop_predicate(next_event) {
-                    return Some(((*next_event).time as usize, next_event_idx as usize));
-                }
-                event = next_event;
             }
-        }
-
-        // Don't forget about the last event
-        unsafe {
-            self.handle_in_event(
-                event,
-                &mut input_events,
-                Some(transport_info),
-                current_sample_idx,
-                total_buffer_len,
-            );
         }
 
         None
@@ -1156,8 +1135,8 @@ impl<P: ClapPlugin> Wrapper<P> {
                         },
                         note_id: voice_id.unwrap_or(-1),
                         port_index: 0,
-                        channel: channel as i16,
-                        key: note as i16,
+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
+                        key: if note == u8::MAX { -1 } else { note as i16 },
                         velocity: velocity as f64,
                     };
 
@@ -1182,8 +1161,8 @@ impl<P: ClapPlugin> Wrapper<P> {
                         },
                         note_id: voice_id.unwrap_or(-1),
                         port_index: 0,
-                        channel: channel as i16,
-                        key: note as i16,
+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
+                        key: if note == u8::MAX { -1 } else { note as i16 },
                         velocity: velocity as f64,
                     };
 
@@ -1209,8 +1188,8 @@ impl<P: ClapPlugin> Wrapper<P> {
                         },
                         note_id: voice_id.unwrap_or(-1),
                         port_index: 0,
-                        channel: channel as i16,
-                        key: note as i16,
+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
+                        key: if note == u8::MAX { -1 } else { note as i16 },
                         velocity: 0.0,
                     };
 
@@ -1236,8 +1215,8 @@ impl<P: ClapPlugin> Wrapper<P> {
                         expression_id: CLAP_NOTE_EXPRESSION_PRESSURE,
                         note_id: voice_id.unwrap_or(-1),
                         port_index: 0,
-                        channel: channel as i16,
-                        key: note as i16,
+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
+                        key: if note == u8::MAX { -1 } else { note as i16 },
                         value: pressure as f64,
                     };
 
@@ -1263,8 +1242,8 @@ impl<P: ClapPlugin> Wrapper<P> {
                         expression_id: CLAP_NOTE_EXPRESSION_VOLUME,
                         note_id: voice_id.unwrap_or(-1),
                         port_index: 0,
-                        channel: channel as i16,
-                        key: note as i16,
+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
+                        key: if note == u8::MAX { -1 } else { note as i16 },
                         value: gain as f64,
                     };
 
@@ -1290,8 +1269,8 @@ impl<P: ClapPlugin> Wrapper<P> {
                         expression_id: CLAP_NOTE_EXPRESSION_PAN,
                         note_id: voice_id.unwrap_or(-1),
                         port_index: 0,
-                        channel: channel as i16,
-                        key: note as i16,
+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
+                        key: if note == u8::MAX { -1 } else { note as i16 },
                         value: (pan as f64 + 1.0) / 2.0,
                     };
 
@@ -1317,8 +1296,8 @@ impl<P: ClapPlugin> Wrapper<P> {
                         expression_id: CLAP_NOTE_EXPRESSION_TUNING,
                         note_id: voice_id.unwrap_or(-1),
                         port_index: 0,
-                        channel: channel as i16,
-                        key: note as i16,
+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
+                        key: if note == u8::MAX { -1 } else { note as i16 },
                         value: tuning as f64,
                     };
 
@@ -1344,8 +1323,8 @@ impl<P: ClapPlugin> Wrapper<P> {
                         expression_id: CLAP_NOTE_EXPRESSION_VIBRATO,
                         note_id: voice_id.unwrap_or(-1),
                         port_index: 0,
-                        channel: channel as i16,
-                        key: note as i16,
+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
+                        key: if note == u8::MAX { -1 } else { note as i16 },
                         value: vibrato as f64,
                     };
 
@@ -1371,8 +1350,8 @@ impl<P: ClapPlugin> Wrapper<P> {
                         expression_id: CLAP_NOTE_EXPRESSION_EXPRESSION,
                         note_id: voice_id.unwrap_or(-1),
                         port_index: 0,
-                        channel: channel as i16,
-                        key: note as i16,
+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
+                        key: if note == u8::MAX { -1 } else { note as i16 },
                         value: expression as f64,
                     };
 
@@ -1398,8 +1377,8 @@ impl<P: ClapPlugin> Wrapper<P> {
                         expression_id: CLAP_NOTE_EXPRESSION_BRIGHTNESS,
                         note_id: voice_id.unwrap_or(-1),
                         port_index: 0,
-                        channel: channel as i16,
-                        key: note as i16,
+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
+                        key: if note == u8::MAX { -1 } else { note as i16 },
                         value: brightness as f64,
                     };
 
@@ -1580,6 +1559,7 @@ impl<P: ClapPlugin> Wrapper<P> {
             (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_ON) => {
                 if P::MIDI_INPUT >= MidiConfig::Basic {
                     let event = unsafe { &*(event as *const clap_event_note) };
+                    if event.port_index != 0 || !(0..16).contains(&event.channel) || !(0..128).contains(&event.key) { return; }
                     input_events.push_back(NoteEvent::NoteOn {
                         // When splitting up the buffer for sample accurate automation all events
                         // should be relative to the block
@@ -1598,6 +1578,7 @@ impl<P: ClapPlugin> Wrapper<P> {
             (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_OFF) => {
                 if P::MIDI_INPUT >= MidiConfig::Basic {
                     let event = unsafe { &*(event as *const clap_event_note) };
+                    if !(-1..=0).contains(&event.port_index) || !(-1..16).contains(&event.channel) || !(-1..128).contains(&event.key) { return; }
                     input_events.push_back(NoteEvent::NoteOff {
                         timing,
                         voice_id: if event.note_id != -1 {
@@ -1614,6 +1595,7 @@ impl<P: ClapPlugin> Wrapper<P> {
             (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_CHOKE) => {
                 if P::MIDI_INPUT >= MidiConfig::Basic {
                     let event = unsafe { &*(event as *const clap_event_note) };
+                    if !(-1..=0).contains(&event.port_index) || !(-1..16).contains(&event.channel) || !(-1..128).contains(&event.key) { return; }
                     input_events.push_back(NoteEvent::Choke {
                         timing,
                         voice_id: if event.note_id != -1 {
@@ -1621,7 +1603,7 @@ impl<P: ClapPlugin> Wrapper<P> {
                         } else {
                             None
                         },
-                        // FIXME: These values are also allowed to be -1, we need to support that
+                        // Preserve -1 as NOTE_ADDRESS_WILDCARD (u8::MAX).
                         channel: event.channel as u8,
                         note: event.key as u8,
                     });
@@ -1629,8 +1611,9 @@ impl<P: ClapPlugin> Wrapper<P> {
             }
             (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_EXPRESSION) => {
                 if P::MIDI_INPUT >= MidiConfig::Basic {
-                    // TODO: Add support for the other expression types
                     let event = unsafe { &*(event as *const clap_event_note_expression) };
+                    if !(-1..=0).contains(&event.port_index) || !(-1..16).contains(&event.channel) || !(-1..128).contains(&event.key) || !event.value.is_finite() { return; }
+
                     match event.expression_id {
                         CLAP_NOTE_EXPRESSION_PRESSURE => {
                             input_events.push_back(NoteEvent::PolyPressure {
@@ -3321,8 +3304,10 @@ impl<P: ClapPlugin> Wrapper<P> {
                 let info = unsafe { &mut *info };
                 info.id = 0;
                 // NOTE: REAPER won't send us SysEx if we don't support the MIDI dialect
-                // TODO: Implement MPE (would just be a toggle for the plugin to expose it) and MIDI2
                 info.supported_dialects = CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI;
+                if P::CLAP_SUPPORTS_MPE && P::MIDI_INPUT >= MidiConfig::MidiCCs {
+                    info.supported_dialects |= clap_sys::ext::note_ports::CLAP_NOTE_DIALECT_MIDI_MPE;
+                }
                 info.preferred_dialect = CLAP_NOTE_DIALECT_CLAP;
                 strlcpy(&mut info.name, "Note Input");
 
@@ -3648,31 +3633,37 @@ impl<P: ClapPlugin> Wrapper<P> {
             );
             return false;
         }
-        let length = u64::from_le_bytes(length_bytes);
-        // A corrupt state stream (or state written by a different wrapper)
-        // must never be able to make the plug-in host attempt an unbounded
-        // allocation. 256 MiB leaves ample room for sample-heavy plug-ins and
-        // turns incompatible state into a normal load failure.
-        const MAX_STATE_BYTES: u64 = 256 * 1024 * 1024;
-        if length > MAX_STATE_BYTES || usize::try_from(length).is_err() {
-            crate::nice_debug_assert_failure!(
-                "Refusing to load an invalid state length of {} bytes (maximum is {}).",
-                length,
-                MAX_STATE_BYTES,
-            );
-            return false;
-        }
-        let length = length as usize;
+        let declared_length = u64::from_le_bytes(length_bytes);
+        // Vec byte capacities must fit in isize as well as usize. This is a platform
+        // representation limit, not a preset-size policy imposed on plugins.
+        let length = match usize::try_from(declared_length) {
+            Ok(length) if length <= isize::MAX as usize => length,
+            _ => return false,
+        };
 
-        let mut read_buffer: Vec<u8> = Vec::with_capacity(length);
-        if !read_stream(unsafe { &*stream }, read_buffer.spare_capacity_mut()) {
-            crate::nice_debug_assert_failure!(
-                "Error or end of stream while reading the state buffer from the stream."
-            );
-            return false;
-        }
-        unsafe {
-            read_buffer.set_len(length);
+        // The prefix is untrusted. Grow only as the stream supplies data, rather than
+        // reserving its entire claimed length before discovering a truncated stream.
+        // This bounds each read, not the total state size (samplers may have large states).
+        const READ_CHUNK_BYTES: usize = 64 * 1024;
+        let mut read_buffer: Vec<u8> = Vec::new();
+        while read_buffer.len() < length {
+            let chunk_len = (length - read_buffer.len()).min(READ_CHUNK_BYTES);
+            if read_buffer.try_reserve(chunk_len).is_err() {
+                return false;
+            }
+            // Capacity may exceed the request after geometric growth. Read only the
+            // required bytes so we neither consume beyond the envelope nor expose
+            // uninitialized spare capacity to the deserializer.
+            if !read_stream(
+                unsafe { &*stream },
+                &mut read_buffer.spare_capacity_mut()[..chunk_len],
+            ) {
+                return false;
+            }
+            unsafe {
+                // read_stream initialized this entire chunk before returning true.
+                read_buffer.set_len(read_buffer.len() + chunk_len);
+            }
         }
 
         match unsafe { state::deserialize_json(&read_buffer) } {

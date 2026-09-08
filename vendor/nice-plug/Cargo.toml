@@ -78,6 +78,18 @@ name = "nice_plug"
 path = "src/lib.rs"
 
 [[test]]
+name = "clap_state_stream"
+path = "tests/clap_state_stream.rs"
+
+[[test]]
+name = "note_expressions"
+path = "tests/note_expressions.rs"
+
+[[test]]
+name = "clap_event_timing"
+path = "tests/clap_event_timing.rs"
+
+[[test]]
 name = "derive_params"
 path = "tests/derive_params.rs"
 

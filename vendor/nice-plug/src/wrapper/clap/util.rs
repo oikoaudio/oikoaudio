@@ -133,7 +133,7 @@ pub fn read_stream(stream: &clap_istream, mut slice: impl ByteReadBuffer) -> boo
                 (slice.len() - read_pos) as u64,
             )
         };
-        if bytes_read <= 0 {
+        if bytes_read <= 0 || bytes_read as u64 > (slice.len() - read_pos) as u64 {
             return false;
         }
 

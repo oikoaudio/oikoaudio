@@ -9,7 +9,7 @@ type MidiChannel = u8;
 type NoteId = i32;
 
 /// The number of notes we'll keep track of for mapping note IDs to channel+note combinations.
-const NOTE_IDS_LEN: usize = 32;
+const NOTE_IDS_LEN: usize = 128;
 
 /// `kVolumeTypeID`
 pub const VOLUME_EXPRESSION_ID: u32 = 0;
@@ -64,11 +64,11 @@ pub const KNOWN_NOTE_EXPRESSIONS: [NoteExpressionInfo; 6] = [
 /// expressions are identified only with a note ID. To account for that, we'll keep track of the
 /// most recent note IDs we've encountered so we can later map those IDs back to a note and channel
 /// combination.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct NoteExpressionController {
-    /// The last 32 note IDs we've seen. We'll do a linear search every time we receive a note
+    /// The most recent note IDs we've seen. We'll do a linear search every time we receive a note
     /// expression value event to find the matching note and channel.
-    note_ids: [(NoteId, MidiNote, MidiChannel); NOTE_IDS_LEN],
+    note_ids: [Option<(NoteId, MidiNote, MidiChannel)>; NOTE_IDS_LEN],
     /// The index in the `note_ids` ring buffer the next event should be inserted at, wraps back
     /// around to 0 when reaching the end.
     note_ids_idx: usize,
@@ -88,12 +88,32 @@ pub struct NoteExpressionInfo {
     pub unit: &'static str,
 }
 
+impl Default for NoteExpressionController {
+    fn default() -> Self {
+        Self {
+            note_ids: [None; NOTE_IDS_LEN],
+            note_ids_idx: 0,
+        }
+    }
+}
+
 impl NoteExpressionController {
     /// Register the note ID from a note on event so it can later be retrieved when handling a note
     /// expression value event.
     pub fn register_note(&mut self, event: &NoteOnEvent) {
-        self.note_ids[self.note_ids_idx] = (event.noteId, event.pitch as u8, event.channel as u8);
-        self.note_ids_idx = (self.note_ids_idx + 1) % NOTE_IDS_LEN;
+        if event.noteId < 0 {
+            return;
+        }
+        let index = self
+            .note_ids
+            .iter()
+            .position(|entry| entry.is_some_and(|(id, _, _)| id == event.noteId))
+            .unwrap_or_else(|| {
+                let index = self.note_ids_idx;
+                self.note_ids_idx = (index + 1) % NOTE_IDS_LEN;
+                index
+            });
+        self.note_ids[index] = Some((event.noteId, event.pitch as u8, event.channel as u8));
     }
 
     /// Translate the note expression value event into an internal nice-plug event, if we handle the
@@ -105,10 +125,18 @@ impl NoteExpressionController {
         event: &NoteExpressionValueEvent,
     ) -> Option<NoteEvent<S>> {
         // We're calling it a voice ID, VST3 (and CLAP) calls it a note ID
-        let (note_id, note, channel) = *self
+        if event.noteId < 0 || !event.value.is_finite() {
+            return None;
+        }
+        // The ID remains authoritative even after the bounded address cache wraps.
+        // Do not drop expression for a long-held voice just because other notes played.
+        let (note_id, note, channel) = self
             .note_ids
             .iter()
-            .find(|(note_id, _, _)| *note_id == event.noteId)?;
+            .flatten()
+            .find(|(id, _, _)| *id == event.noteId)
+            .copied()
+            .unwrap_or((event.noteId, u8::MAX, u8::MAX));
 
         match event.typeId {
             VOLUME_EXPRESSION_ID => Some(NoteEvent::PolyVolume {
@@ -144,19 +172,19 @@ impl NoteExpressionController {
                 note,
                 vibrato: event.value as f32,
             }),
-            EXPRESSION_EXPRESSION_ID => Some(NoteEvent::PolyBrightness {
-                timing,
-                voice_id: Some(note_id),
-                channel,
-                note,
-                brightness: event.value as f32,
-            }),
-            BRIGHTNESS_EXPRESSION_ID => Some(NoteEvent::PolyExpression {
+            EXPRESSION_EXPRESSION_ID => Some(NoteEvent::PolyExpression {
                 timing,
                 voice_id: Some(note_id),
                 channel,
                 note,
                 expression: event.value as f32,
+            }),
+            BRIGHTNESS_EXPRESSION_ID => Some(NoteEvent::PolyBrightness {
+                timing,
+                voice_id: Some(note_id),
+                channel,
+                note,
+                brightness: event.value as f32,
             }),
             _ => None,
         }

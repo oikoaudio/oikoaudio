@@ -5,7 +5,7 @@ pub mod window;
 
 pub use atomic_float::{AtomicF32, AtomicF64};
 
-pub use stft::StftHelper;
+pub use stft::{StftHelper, StftInput, StftInputMut};
 
 pub const MINUS_INFINITY_DB: f32 = -100.0;
 pub const MINUS_INFINITY_GAIN: f32 = 1e-5; // 10f32.powf(MINUS_INFINITY_DB / 20)

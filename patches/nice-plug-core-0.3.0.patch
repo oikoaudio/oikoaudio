@@ -199,3 +199,32 @@
 +        assert!((integer.modulated_normalized_value() - 0.52).abs() < 1e-6);
 +    }
 +}
+--- a/src/midi.rs
++++ b/src/midi.rs
+@@ -36,9 +36,12 @@
+     MidiCCs,
+ }
+ 
+-// FIXME: Like the voice ID, channel and note number can also be omitted in CLAP. And instead of an
+-//        Option, maybe this should use a dedicated type to more clearly indicate that missing
+-//        values should be treated as wildcards.
++/// Wildcard channel/key in note-off, choke and polyphonic expression events.
++/// CLAP's signed -1 address is preserved as this sentinel without changing the
++/// existing event layout. Match every specified address component; an omitted
++/// voice ID also matches all IDs. Note-on addresses must always be concrete.
++/// VST3 expressions can carry only an ID when no channel/key mapping is retained.
++pub const NOTE_ADDRESS_WILDCARD: u8 = u8::MAX;
+ 
+ /// Event for (incoming) notes. The set of supported note events depends on the value of
+ /// [`Plugin::MIDI_INPUT`. Also check out the [`util`][crate::util] module for convenient conversion
+--- a/src/util.rs
++++ b/src/util.rs
+@@ -5,7 +5,7 @@
+ 
+ pub use atomic_float::{AtomicF32, AtomicF64};
+ 
+-pub use stft::StftHelper;
++pub use stft::{StftHelper, StftInput, StftInputMut};
+ 
+ pub const MINUS_INFINITY_DB: f32 = -100.0;
+ pub const MINUS_INFINITY_GAIN: f32 = 1e-5; // 10f32.powf(MINUS_INFINITY_DB / 20)

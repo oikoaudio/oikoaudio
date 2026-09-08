@@ -988,6 +988,7 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                 }
             };
 
+            *self.inner.note_expression_controller.borrow_mut() = NoteExpressionController::default();
             process_wrapper(|| plugin.reset());
         }
 
@@ -1165,6 +1166,16 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                                 note: event.pitch as u8,
                                 velocity: event.velocity,
                             }));
+                            // NoteOnEvent tuning is in cents; common tuning is in semitones.
+                            if event.tuning.is_finite() && event.tuning != 0.0 {
+                                process_events.push(ProcessEvent::NoteEvent(NoteEvent::PolyTuning {
+                                    timing,
+                                    voice_id: (event.noteId >= 0).then_some(event.noteId),
+                                    channel: event.channel as u8,
+                                    note: event.pitch as u8,
+                                    tuning: event.tuning / 100.0,
+                                }));
+                            }
                         } else if event.r#type == EventTypes_::kNoteOffEvent as u16 {
                             let event = unsafe { event.__field0.noteOff };
                             process_events.push(ProcessEvent::NoteEvent(NoteEvent::NoteOff {
@@ -1818,7 +1829,12 @@ impl<P: Vst3Plugin> INoteExpressionControllerTrait for Wrapper<P> {
         // This should not be needed since they're predefined, but then again you'd think you also
         // wouldn't need to define predefined note expressions now do you?
         info.valueDesc = NoteExpressionValueDescription {
-            defaultValue: 0.5,
+            defaultValue: match note_expression_info.type_id {
+                note_expressions::VOLUME_EXPRESSION_ID => 0.25,
+                note_expressions::VIBRATO_EXPRESSION_ID => 0.0,
+                note_expressions::EXPRESSION_EXPRESSION_ID => 1.0,
+                _ => 0.5,
+            },
             minimum: 0.0,
             maximum: 1.0,
             stepCount: 0,
