@@ -1,0 +1,994 @@
+[
+  {
+    "source_id": "factory:5edo",
+    "display_name": "5 EDO",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n5 EDO\n5\n240.000000000000\n480.000000000000\n720.000000000000\n960.000000000000\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Octave",
+    "description": "",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "octave",
+      "edo"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/5edo.scl"
+  },
+  {
+    "source_id": "factory:7edo",
+    "display_name": "7 EDO",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n7 EDO\n7\n171.428571428571\n342.857142857143\n514.285714285714\n685.714285714286\n857.142857142857\n1028.571428571429\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Octave",
+    "description": "",
+    "listening_hint": "Play a short melody over a drone. Repeat it seven keys higher and listen for the octave.",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "octave",
+      "edo",
+      "listening-guide",
+      "lesson:07"
+    ],
+    "aliases": [],
+    "favorite": true,
+    "scl_resource": "tunings/7edo.scl"
+  },
+  {
+    "source_id": "factory:9edo",
+    "display_name": "9 EDO",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n9 EDO\n9\n133.333333333333\n266.666666666667\n400.000000000000\n533.333333333333\n666.666666666667\n800.000000000000\n933.333333333333\n1066.666666666667\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Octave",
+    "description": "",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "octave",
+      "edo"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/9edo.scl"
+  },
+  {
+    "source_id": "factory:10edo",
+    "display_name": "10 EDO",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n10 EDO\n10\n120.000000000000\n240.000000000000\n360.000000000000\n480.000000000000\n600.000000000000\n720.000000000000\n840.000000000000\n960.000000000000\n1080.000000000000\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Octave",
+    "description": "",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "octave",
+      "edo"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/10edo.scl"
+  },
+  {
+    "source_id": "factory:12edo",
+    "display_name": "12 EDO",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n12 EDO\n12\n100.000000000000\n200.000000000000\n300.000000000000\n400.000000000000\n500.000000000000\n600.000000000000\n700.000000000000\n800.000000000000\n900.000000000000\n1000.000000000000\n1100.000000000000\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Octave",
+    "description": "",
+    "listening_hint": "Hold a plain major chord. Compare Soft Circuit and listen for changes in its pulse.",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "octave",
+      "edo",
+      "listening-guide",
+      "lesson:01"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "../crates/inton-core/resources/12edo.scl"
+  },
+  {
+    "source_id": "factory:15edo",
+    "display_name": "15 EDO",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n15 EDO\n15\n80.000000000000\n160.000000000000\n240.000000000000\n320.000000000000\n400.000000000000\n480.000000000000\n560.000000000000\n640.000000000000\n720.000000000000\n800.000000000000\n880.000000000000\n960.000000000000\n1040.000000000000\n1120.000000000000\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Octave",
+    "description": "",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "octave",
+      "edo"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/15edo.scl"
+  },
+  {
+    "source_id": "factory:17edo",
+    "display_name": "17 EDO",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n17 EDO\n17\n70.588235294118\n141.176470588235\n211.764705882353\n282.352941176471\n352.941176470588\n423.529411764706\n494.117647058824\n564.705882352941\n635.294117647059\n705.882352941176\n776.470588235294\n847.058823529412\n917.647058823529\n988.235294117647\n1058.823529411765\n1129.411764705882\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Octave",
+    "description": "",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "octave",
+      "edo"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/17edo.scl"
+  },
+  {
+    "source_id": "factory:19edo",
+    "display_name": "19 EDO",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n19 EDO\n19\n63.157894736842\n126.315789473684\n189.473684210526\n252.631578947368\n315.789473684211\n378.947368421053\n442.105263157895\n505.263157894737\n568.421052631579\n631.578947368421\n694.736842105263\n757.894736842105\n821.052631578947\n884.210526315789\n947.368421052632\n1010.526315789474\n1073.684210526316\n1136.842105263158\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Octave",
+    "description": "",
+    "listening_hint": "Hold a root and a fifth, 11 keys apart. Move a middle note from 5 to 6 keys above the root; listen to the third widen.",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "octave",
+      "edo",
+      "listening-guide",
+      "lesson:04"
+    ],
+    "aliases": [],
+    "favorite": true,
+    "scl_resource": "tunings/19edo.scl"
+  },
+  {
+    "source_id": "factory:22edo",
+    "display_name": "22 EDO",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n22 EDO\n22\n54.545454545455\n109.090909090909\n163.636363636364\n218.181818181818\n272.727272727273\n327.272727272727\n381.818181818182\n436.363636363636\n490.909090909091\n545.454545454545\n600.000000000000\n654.545454545455\n709.090909090909\n763.636363636364\n818.181818181818\n872.727272727273\n927.272727272727\n981.818181818182\n1036.363636363636\n1090.909090909091\n1145.454545454545\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Octave",
+    "description": "",
+    "listening_hint": "Hold a root and a fifth, 13 keys apart. Move a middle note through 5, 6, 7, then 8 keys above the root. Compare the four chord colours.",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "octave",
+      "edo",
+      "listening-guide",
+      "lesson:06"
+    ],
+    "aliases": [],
+    "favorite": true,
+    "scl_resource": "tunings/22edo.scl"
+  },
+  {
+    "source_id": "factory:24edo",
+    "display_name": "24 EDO",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n24 EDO\n24\n50.000000000000\n100.000000000000\n150.000000000000\n200.000000000000\n250.000000000000\n300.000000000000\n350.000000000000\n400.000000000000\n450.000000000000\n500.000000000000\n550.000000000000\n600.000000000000\n650.000000000000\n700.000000000000\n750.000000000000\n800.000000000000\n850.000000000000\n900.000000000000\n950.000000000000\n1000.000000000000\n1050.000000000000\n1100.000000000000\n1150.000000000000\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Octave",
+    "description": "",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "octave",
+      "edo"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/24edo.scl"
+  },
+  {
+    "source_id": "factory:26edo",
+    "display_name": "26 EDO",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n26 EDO\n26\n46.153846153846\n92.307692307692\n138.461538461538\n184.615384615385\n230.769230769231\n276.923076923077\n323.076923076923\n369.230769230769\n415.384615384615\n461.538461538462\n507.692307692308\n553.846153846154\n600.000000000000\n646.153846153846\n692.307692307692\n738.461538461538\n784.615384615385\n830.769230769231\n876.923076923077\n923.076923076923\n969.230769230769\n1015.384615384615\n1061.538461538461\n1107.692307692308\n1153.846153846154\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Octave",
+    "description": "",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "octave",
+      "edo"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/26edo.scl"
+  },
+  {
+    "source_id": "factory:28edo",
+    "display_name": "28 EDO",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n28 EDO\n28\n42.857142857143\n85.714285714286\n128.571428571429\n171.428571428571\n214.285714285714\n257.142857142857\n300.000000000000\n342.857142857143\n385.714285714286\n428.571428571429\n471.428571428571\n514.285714285714\n557.142857142857\n600.000000000000\n642.857142857143\n685.714285714286\n728.571428571429\n771.428571428571\n814.285714285714\n857.142857142857\n900.000000000000\n942.857142857143\n985.714285714286\n1028.571428571429\n1071.428571428571\n1114.285714285714\n1157.142857142857\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Octave",
+    "description": "",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "octave",
+      "edo"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/28edo.scl"
+  },
+  {
+    "source_id": "factory:31edo",
+    "display_name": "31 EDO",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n31 EDO\n31\n38.709677419355\n77.419354838710\n116.129032258065\n154.838709677419\n193.548387096774\n232.258064516129\n270.967741935484\n309.677419354839\n348.387096774194\n387.096774193548\n425.806451612903\n464.516129032258\n503.225806451613\n541.935483870968\n580.645161290323\n619.354838709677\n658.064516129032\n696.774193548387\n735.483870967742\n774.193548387097\n812.903225806452\n851.612903225806\n890.322580645161\n929.032258064516\n967.741935483871\n1006.451612903226\n1045.161290322581\n1083.870967741935\n1122.580645161290\n1161.290322580645\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Octave",
+    "description": "",
+    "listening_hint": "Hold a root and a fifth, 18 keys apart. Add a note 10 keys above the root, then lower it one key. Listen to the change in tension.",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "octave",
+      "edo",
+      "listening-guide",
+      "lesson:05"
+    ],
+    "aliases": [],
+    "favorite": true,
+    "scl_resource": "tunings/31edo.scl"
+  },
+  {
+    "source_id": "factory:41edo",
+    "display_name": "41 EDO",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n41 EDO\n41\n29.268292682927\n58.536585365854\n87.804878048780\n117.073170731707\n146.341463414634\n175.609756097561\n204.878048780488\n234.146341463415\n263.414634146341\n292.682926829268\n321.951219512195\n351.219512195122\n380.487804878049\n409.756097560976\n439.024390243902\n468.292682926829\n497.560975609756\n526.829268292683\n556.097560975610\n585.365853658537\n614.634146341463\n643.902439024390\n673.170731707317\n702.439024390244\n731.707317073171\n760.975609756098\n790.243902439024\n819.512195121951\n848.780487804878\n878.048780487805\n907.317073170732\n936.585365853659\n965.853658536585\n995.121951219512\n1024.390243902439\n1053.658536585366\n1082.926829268293\n1112.195121951220\n1141.463414634146\n1170.731707317073\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Octave",
+    "description": "",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "octave",
+      "edo"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/41edo.scl"
+  },
+  {
+    "source_id": "factory:53edo",
+    "display_name": "53 EDO",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n53 EDO\n53\n22.641509433962\n45.283018867925\n67.924528301887\n90.566037735849\n113.207547169811\n135.849056603774\n158.490566037736\n181.132075471698\n203.773584905660\n226.415094339623\n249.056603773585\n271.698113207547\n294.339622641509\n316.981132075472\n339.622641509434\n362.264150943396\n384.905660377359\n407.547169811321\n430.188679245283\n452.830188679245\n475.471698113208\n498.113207547170\n520.754716981132\n543.396226415094\n566.037735849057\n588.679245283019\n611.320754716981\n633.962264150943\n656.603773584906\n679.245283018868\n701.886792452830\n724.528301886792\n747.169811320755\n769.811320754717\n792.452830188679\n815.094339622642\n837.735849056604\n860.377358490566\n883.018867924528\n905.660377358491\n928.301886792453\n950.943396226415\n973.584905660377\n996.226415094340\n1018.867924528302\n1041.509433962264\n1064.150943396226\n1086.792452830189\n1109.433962264151\n1132.075471698113\n1154.716981132075\n1177.358490566038\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Octave",
+    "description": "",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "octave",
+      "edo"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/53edo.scl"
+  },
+  {
+    "source_id": "factory:72edo",
+    "display_name": "72 EDO",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n72 EDO\n72\n16.666666666667\n33.333333333333\n50.000000000000\n66.666666666667\n83.333333333333\n100.000000000000\n116.666666666667\n133.333333333333\n150.000000000000\n166.666666666667\n183.333333333333\n200.000000000000\n216.666666666667\n233.333333333333\n250.000000000000\n266.666666666667\n283.333333333333\n300.000000000000\n316.666666666667\n333.333333333333\n350.000000000000\n366.666666666667\n383.333333333333\n400.000000000000\n416.666666666667\n433.333333333333\n450.000000000000\n466.666666666667\n483.333333333333\n500.000000000000\n516.666666666667\n533.333333333333\n550.000000000000\n566.666666666667\n583.333333333333\n600.000000000000\n616.666666666667\n633.333333333333\n650.000000000000\n666.666666666667\n683.333333333333\n700.000000000000\n716.666666666667\n733.333333333333\n750.000000000000\n766.666666666667\n783.333333333333\n800.000000000000\n816.666666666667\n833.333333333333\n850.000000000000\n866.666666666667\n883.333333333333\n900.000000000000\n916.666666666667\n933.333333333333\n950.000000000000\n966.666666666667\n983.333333333333\n1000.000000000000\n1016.666666666667\n1033.333333333333\n1050.000000000000\n1066.666666666667\n1083.333333333333\n1100.000000000000\n1116.666666666667\n1133.333333333333\n1150.000000000000\n1166.666666666667\n1183.333333333333\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Octave",
+    "description": "",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "octave",
+      "edo"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/72edo.scl"
+  },
+  {
+    "source_id": "factory:13ed3",
+    "display_name": "Bohlen-Pierce · 13 ED3",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nBohlen-Pierce · 13 ED3\n13\n146.304230835799\n292.608461671598\n438.912692507397\n585.216923343196\n731.521154178995\n877.825385014794\n1024.129615850593\n1170.433846686392\n1316.738077522191\n1463.042308357990\n1609.346539193789\n1755.650770029588\n1901.955000865387\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Non-octave",
+    "description": "",
+    "listening_hint": "Hold a drone and explore one neighbouring key at a time. Repeat a phrase 13 keys higher: it returns above the octave.",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "non-octave",
+      "tritave",
+      "listening-guide",
+      "lesson:08"
+    ],
+    "aliases": [
+      "bohlen",
+      "pierce",
+      "bp"
+    ],
+    "favorite": true,
+    "scl_resource": "tunings/13ed3.scl"
+  },
+  {
+    "source_id": "factory:9ed3",
+    "display_name": "9 ED3",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n9 ED3\n9\n211.328333429487\n422.656666858975\n633.985000288462\n845.313333717950\n1056.641667147437\n1267.970000576925\n1479.298334006412\n1690.626667435900\n1901.955000865387\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Non-octave",
+    "description": "",
+    "listening_hint": "Explore repeating shapes beyond the octave.",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "non-octave",
+      "tritave"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/9ed3.scl"
+  },
+  {
+    "source_id": "factory:19ed3",
+    "display_name": "19 ED3",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n19 ED3\n19\n100.102894782389\n200.205789564778\n300.308684347166\n400.411579129555\n500.514473911944\n600.617368694333\n700.720263476722\n800.823158259110\n900.926053041499\n1001.028947823888\n1101.131842606277\n1201.234737388666\n1301.337632171055\n1401.440526953443\n1501.543421735832\n1601.646316518221\n1701.749211300610\n1801.852106082998\n1901.955000865387\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Non-octave",
+    "description": "",
+    "listening_hint": "Explore repeating shapes beyond the octave.",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "non-octave",
+      "tritave"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/19ed3.scl"
+  },
+  {
+    "source_id": "factory:13ed8",
+    "display_name": "13 ED8",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n13 ED8\n13\n276.923076923077\n553.846153846154\n830.769230769231\n1107.692307692308\n1384.615384615385\n1661.538461538461\n1938.461538461539\n2215.384615384615\n2492.307692307692\n2769.230769230769\n3046.153846153846\n3323.076923076923\n3600.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Non-octave",
+    "description": "",
+    "listening_hint": "Explore repeating shapes beyond the octave.",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "non-octave",
+      "wide period"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/13ed8.scl"
+  },
+  {
+    "source_id": "factory:17ed4",
+    "display_name": "17 ED4",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n17 ED4\n17\n141.176470588235\n282.352941176471\n423.529411764706\n564.705882352941\n705.882352941176\n847.058823529412\n988.235294117647\n1129.411764705882\n1270.588235294118\n1411.764705882353\n1552.941176470588\n1694.117647058823\n1835.294117647059\n1976.470588235294\n2117.647058823529\n2258.823529411765\n2400.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Non-octave",
+    "description": "",
+    "listening_hint": "Explore repeating shapes beyond the octave.",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "non-octave",
+      "wide period"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/17ed4.scl"
+  },
+  {
+    "source_id": "factory:12ed4",
+    "display_name": "12 ED4",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n12 ED4\n12\n200.000000000000\n400.000000000000\n600.000000000000\n800.000000000000\n1000.000000000000\n1200.000000000000\n1400.000000000000\n1600.000000000000\n1800.000000000000\n2000.000000000000\n2200.000000000000\n2400.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Non-octave",
+    "description": "",
+    "listening_hint": "Explore repeating shapes beyond the octave.",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "non-octave",
+      "wide period"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/12ed4.scl"
+  },
+  {
+    "source_id": "factory:7ed3",
+    "display_name": "7 ED3",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n7 ED3\n7\n271.707857266484\n543.415714532968\n815.123571799452\n1086.831429065936\n1358.539286332420\n1630.247143598903\n1901.955000865387\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Non-octave",
+    "description": "",
+    "listening_hint": "Explore repeating shapes beyond the octave.",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "non-octave",
+      "tritave"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/7ed3.scl"
+  },
+  {
+    "source_id": "factory:11ed3",
+    "display_name": "11 ED3",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n11 ED3\n11\n172.905000078672\n345.810000157343\n518.715000236015\n691.620000314686\n864.525000393358\n1037.430000472029\n1210.335000550701\n1383.240000629373\n1556.145000708044\n1729.050000786716\n1901.955000865387\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Non-octave",
+    "description": "",
+    "listening_hint": "Explore repeating shapes beyond the octave.",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "equal divisions",
+      "non-octave",
+      "tritave"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/11ed3.scl"
+  },
+  {
+    "source_id": "factory:ji-major",
+    "display_name": "5-limit major",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n5-limit major\n7\n9/8\n5/4\n4/3\n3/2\n5/3\n15/8\n2/1\n",
+    "kbm_text": null,
+    "category": "Just Intonation",
+    "description": "Pure major thirds and fifths in a diatonic palette.",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "just",
+      "ratio",
+      "harmonic"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/ji-major.scl"
+  },
+  {
+    "source_id": "factory:ji-minor",
+    "display_name": "5-limit minor",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n5-limit minor\n7\n9/8\n6/5\n4/3\n3/2\n8/5\n9/5\n2/1\n",
+    "kbm_text": null,
+    "category": "Just Intonation",
+    "description": "A minor palette built from small whole-number ratios.",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "just",
+      "ratio",
+      "harmonic"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/ji-minor.scl"
+  },
+  {
+    "source_id": "factory:ji-pentatonic",
+    "display_name": "Pure major pentatonic",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nPure major pentatonic\n5\n9/8\n5/4\n3/2\n5/3\n2/1\n",
+    "kbm_text": null,
+    "category": "Just Intonation",
+    "description": "Pure major third and perfect fifth.",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "just",
+      "ratio",
+      "harmonic"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/ji-pentatonic.scl"
+  },
+  {
+    "source_id": "factory:septimal",
+    "display_name": "7-limit color",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n7-limit color\n7\n8/7\n7/6\n4/3\n3/2\n12/7\n7/4\n2/1\n",
+    "kbm_text": null,
+    "category": "Just Intonation",
+    "description": "Includes the 7:4 harmonic seventh.",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "just",
+      "ratio",
+      "harmonic"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/septimal.scl"
+  },
+  {
+    "source_id": "factory:harmonics8",
+    "display_name": "Harmonics 8–16",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nHarmonics 8–16\n8\n9/8\n10/8\n11/8\n12/8\n13/8\n14/8\n15/8\n16/8\n",
+    "kbm_text": null,
+    "category": "Just Intonation",
+    "description": "Successive harmonics folded into the repeating octave.",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "just",
+      "ratio",
+      "harmonic"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/harmonics8.scl"
+  },
+  {
+    "source_id": "factory:harmonics16",
+    "display_name": "Harmonics 16–32",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nHarmonics 16–32\n16\n17/16\n18/16\n19/16\n20/16\n21/16\n22/16\n23/16\n24/16\n25/16\n26/16\n27/16\n28/16\n29/16\n30/16\n31/16\n32/16\n",
+    "kbm_text": null,
+    "category": "Just Intonation",
+    "description": "Closely spaced harmonic-series intervals.",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "just",
+      "ratio",
+      "harmonic"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/harmonics16.scl"
+  },
+  {
+    "source_id": "factory:subharmonics",
+    "display_name": "Subharmonics 16–8",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nSubharmonics 16–8\n8\n16/15\n16/14\n16/13\n16/12\n16/11\n16/10\n16/9\n16/8\n",
+    "kbm_text": null,
+    "category": "Just Intonation",
+    "description": "Descending harmonic numbers give an ascending subharmonic palette.",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "just",
+      "ratio",
+      "harmonic"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/subharmonics.scl"
+  },
+  {
+    "source_id": "factory:tritave-ji",
+    "display_name": "Just tritave",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nJust tritave\n7\n9/7\n7/5\n5/3\n9/5\n15/7\n7/3\n3/1\n",
+    "kbm_text": null,
+    "category": "Just Intonation",
+    "description": "Small whole-number ratios across a tritave.",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "just",
+      "ratio",
+      "harmonic"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/tritave-ji.scl"
+  },
+  {
+    "source_id": "factory:pythagorean",
+    "display_name": "Pythagorean chromatic",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nPythagorean chromatic\n12\n256/243\n9/8\n32/27\n81/64\n4/3\n729/512\n3/2\n128/81\n27/16\n16/9\n243/128\n2/1\n",
+    "kbm_text": null,
+    "category": "Historical / Temperaments",
+    "description": "Built from pure 3:2 fifths.",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "historical",
+      "pythagorean",
+      "fifths"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/pythagorean.scl"
+  },
+  {
+    "source_id": "factory:quarter-comma",
+    "display_name": "Quarter-comma meantone",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nQuarter-comma meantone\n12\n117.107857668957\n193.156856932417\n310.264714601374\n386.313713864834\n503.421571533791\n579.470570797252\n696.578428466209\n813.686286135166\n889.735285398626\n1006.843143067583\n1082.892142331043\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Historical / Temperaments",
+    "description": "Pure major thirds; the chain includes an uneven closing fifth.",
+    "listening_hint": "Sustain a major third, then move the chord up one key. Does it settle as easily?",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "historical",
+      "meantone",
+      "major thirds",
+      "listening-guide",
+      "lesson:03"
+    ],
+    "aliases": [],
+    "favorite": true,
+    "scl_resource": "tunings/quarter-comma.scl"
+  },
+  {
+    "source_id": "factory:seven-golden",
+    "display_name": "7 steps · golden ratio",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n7 steps · golden ratio\n7\n119.012899479534\n238.025798959069\n357.038698438603\n476.051597918138\n595.064497397672\n714.077396877206\n833.090296356741\n",
+    "kbm_text": null,
+    "category": "Experimental",
+    "description": "",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "experimental",
+      "arbitrary period"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/seven-golden.scl"
+  },
+  {
+    "source_id": "factory:seven-five-four",
+    "display_name": "7 steps · 5:4 period",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\n7 steps · 5:4 period\n7\n55.187673409262\n110.375346818524\n165.563020227786\n220.750693637048\n275.938367046311\n331.126040455573\n386.313713864835\n",
+    "kbm_text": null,
+    "category": "Experimental",
+    "description": "",
+    "listening_hint": "",
+    "source": "Independent mathematical construction; formula documented in scripts/generate-factory.py",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "experimental",
+      "arbitrary period"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/seven-five-four.scl"
+  },
+  {
+    "source_id": "factory:detune-soft-circuit",
+    "display_name": "Soft Circuit",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nSoft Circuit\n12\n96.000000000000\n203.000000000000\n294.000000000000\n397.000000000000\n502.000000000000\n595.000000000000\n701.000000000000\n796.000000000000\n900.000000000000\n1004.000000000000\n1098.000000000000\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Electronic/Detuned 12-note",
+    "description": "Subtle fixed offsets for soft pads and restrained synth chords. Fixed per-note detuning up to 6 cents.",
+    "listening_hint": "Try a simple C minor or A minor chord; compare with 12 EDO using a sustained sound. Listen for a gentle shimmer between the notes.",
+    "source": "Original Oiko Inton pitch-class offsets, specified in scripts/electronic-detunings.json; not a transcription of any artist or recording.",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "electronic",
+      "techno",
+      "synth",
+      "detuned",
+      "12-note",
+      "octave",
+      "original",
+      "listening-guide",
+      "lesson:02"
+    ],
+    "aliases": [],
+    "favorite": true,
+    "scl_resource": "tunings/detune-soft-circuit.scl"
+  },
+  {
+    "source_id": "factory:detune-loose-clock",
+    "display_name": "Loose Clock",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nLoose Clock\n12\n108.000000000000\n194.000000000000\n289.000000000000\n393.000000000000\n505.000000000000\n591.000000000000\n702.000000000000\n810.000000000000\n900.000000000000\n992.000000000000\n1106.000000000000\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Electronic/Detuned 12-note",
+    "description": "Small irregular offsets for bass sequences and dry plucks. Fixed per-note detuning up to 11 cents.",
+    "listening_hint": "Try a repeating C, Eb, G, Bb pattern.",
+    "source": "Original Oiko Inton pitch-class offsets, specified in scripts/electronic-detunings.json; not a transcription of any artist or recording.",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "electronic",
+      "techno",
+      "synth",
+      "detuned",
+      "12-note",
+      "octave",
+      "original"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/detune-loose-clock.scl"
+  },
+  {
+    "source_id": "factory:detune-glass-steps",
+    "display_name": "Glass Steps",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nGlass Steps\n12\n88.000000000000\n209.000000000000\n284.000000000000\n386.000000000000\n507.000000000000\n589.000000000000\n702.000000000000\n815.000000000000\n900.000000000000\n982.000000000000\n1110.000000000000\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Electronic/Detuned 12-note",
+    "description": "Lowered thirds with raised neighboring notes for glassy arpeggios and synth chords. Fixed per-note detuning up to 18 cents.",
+    "listening_hint": "Try C, E, G, Bb with a bright, harmonically rich patch.",
+    "source": "Original Oiko Inton pitch-class offsets, specified in scripts/electronic-detunings.json; not a transcription of any artist or recording.",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "electronic",
+      "techno",
+      "synth",
+      "detuned",
+      "12-note",
+      "octave",
+      "original"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/detune-glass-steps.scl"
+  },
+  {
+    "source_id": "factory:detune-bent-fifths",
+    "display_name": "Bent Fifths",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nBent Fifths\n12\n107.000000000000\n190.000000000000\n312.000000000000\n392.000000000000\n515.000000000000\n586.000000000000\n682.000000000000\n809.000000000000\n900.000000000000\n989.000000000000\n1106.000000000000\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Electronic/Detuned 12-note",
+    "description": "A narrowed C-G fifth introduces tension into otherwise familiar shapes. Fixed per-note detuning up to 18 cents.",
+    "listening_hint": "Try sustained C-G dyads or a two-note bass ostinato.",
+    "source": "Original Oiko Inton pitch-class offsets, specified in scripts/electronic-detunings.json; not a transcription of any artist or recording.",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "electronic",
+      "techno",
+      "synth",
+      "detuned",
+      "12-note",
+      "octave",
+      "original"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/detune-bent-fifths.scl"
+  },
+  {
+    "source_id": "factory:detune-split-neon",
+    "display_name": "Split Neon",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nSplit Neon\n12\n118.000000000000\n182.000000000000\n318.000000000000\n382.000000000000\n518.000000000000\n582.000000000000\n718.000000000000\n782.000000000000\n900.000000000000\n982.000000000000\n1118.000000000000\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Electronic/Detuned 12-note",
+    "description": "Alternating offsets make neighboring steps expand and contract. C and A stay fixed as tonal anchors. Fixed per-note detuning up to 18 cents.",
+    "listening_hint": "Try chromatic plucks or a short repeating sequence.",
+    "source": "Original Oiko Inton pitch-class offsets, specified in scripts/electronic-detunings.json; not a transcription of any artist or recording.",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "electronic",
+      "techno",
+      "synth",
+      "detuned",
+      "12-note",
+      "octave",
+      "original"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/detune-split-neon.scl"
+  },
+  {
+    "source_id": "factory:detune-oxide",
+    "display_name": "Oxide",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nOxide\n12\n76.000000000000\n214.000000000000\n269.000000000000\n382.000000000000\n521.000000000000\n573.000000000000\n704.000000000000\n829.000000000000\n900.000000000000\n978.000000000000\n1117.000000000000\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Electronic/Detuned 12-note",
+    "description": "Stronger irregular offsets for tense pads, rough-edged stabs, and sparse melodies. Fixed per-note detuning up to 31 cents.",
+    "listening_hint": "Try C, Eb, F, G, Bb with long releases to expose the changing intervals.",
+    "source": "Original Oiko Inton pitch-class offsets, specified in scripts/electronic-detunings.json; not a transcription of any artist or recording.",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "electronic",
+      "techno",
+      "synth",
+      "detuned",
+      "12-note",
+      "octave",
+      "original"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/detune-oxide.scl"
+  },
+  {
+    "source_id": "factory:detune-ripple",
+    "display_name": "Ripple",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nRipple\n12\n114.000000000000\n228.000000000000\n280.000000000000\n394.000000000000\n508.000000000000\n622.000000000000\n674.000000000000\n788.000000000000\n900.000000000000\n1016.000000000000\n1130.000000000000\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Electronic/Detuned 12-note",
+    "description": "Groups of rising offsets followed by a reset give scalar lines an uneven contour. Fixed per-note detuning up to 30 cents.",
+    "listening_hint": "Try ascending semitones on a clean pluck before moving to a longer sequence.",
+    "source": "Original Oiko Inton pitch-class offsets, specified in scripts/electronic-detunings.json; not a transcription of any artist or recording.",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "electronic",
+      "techno",
+      "synth",
+      "detuned",
+      "12-note",
+      "octave",
+      "original"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/detune-ripple.scl"
+  },
+  {
+    "source_id": "factory:detune-warped-grid",
+    "display_name": "Warped Grid",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nWarped Grid\n12\n131.000000000000\n173.000000000000\n338.000000000000\n378.000000000000\n526.000000000000\n565.000000000000\n712.000000000000\n771.000000000000\n900.000000000000\n1034.000000000000\n1082.000000000000\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Electronic/Detuned 12-note",
+    "description": "Pronounced opposing offsets for angular leads and dissonant chord fragments. Octaves remain exact even as the intervals inside them pull apart. Fixed per-note detuning up to 38 cents.",
+    "listening_hint": "Start with two or three notes.",
+    "source": "Original Oiko Inton pitch-class offsets, specified in scripts/electronic-detunings.json; not a transcription of any artist or recording.",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "electronic",
+      "techno",
+      "synth",
+      "detuned",
+      "12-note",
+      "octave",
+      "original"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/detune-warped-grid.scl"
+  },
+  {
+    "source_id": "factory:detune-frayed-thirds",
+    "display_name": "Frayed Thirds",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nFrayed Thirds\n12\n95.000000000000\n204.000000000000\n292.000000000000\n408.000000000000\n498.000000000000\n607.000000000000\n702.000000000000\n794.000000000000\n900.000000000000\n1009.000000000000\n1096.000000000000\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Electronic/Detuned 12-note",
+    "description": "A nearly pure C–G fifth frames a widened C–E third and narrowed C–Eb third. Fixed per-note detuning up to 9 cents.",
+    "listening_hint": "Hold C–G, then add E or Eb to hear the extra beating.",
+    "source": "Original Oiko Inton pitch-class offsets, specified in scripts/electronic-detunings.json; not a transcription of any artist or recording.",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "electronic",
+      "techno",
+      "synth",
+      "detuned",
+      "12-note",
+      "octave",
+      "original"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/detune-frayed-thirds.scl"
+  },
+  {
+    "source_id": "factory:detune-restless-fifths",
+    "display_name": "Restless Fifths",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nRestless Fifths\n12\n106.000000000000\n202.000000000000\n291.000000000000\n386.000000000000\n510.000000000000\n596.000000000000\n691.000000000000\n807.000000000000\n900.000000000000\n989.000000000000\n1097.000000000000\n1200.000000000000\n",
+    "kbm_text": null,
+    "category": "Electronic/Detuned 12-note",
+    "description": "A nearly pure C–E major third meets a narrowed C–G fifth. Fixed per-note detuning up to 14 cents.",
+    "listening_hint": "Hold C–E, then add G. Try a sustained saw or pulse sound.",
+    "source": "Original Oiko Inton pitch-class offsets, specified in scripts/electronic-detunings.json; not a transcription of any artist or recording.",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "electronic",
+      "techno",
+      "synth",
+      "detuned",
+      "12-note",
+      "octave",
+      "original"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/detune-restless-fifths.scl"
+  },
+  {
+    "source_id": "factory:carlos-alpha",
+    "display_name": "Carlos Alpha · 78-cent steps",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nCarlos Alpha · 78-cent steps\n9\n78.000000000000\n156.000000000000\n234.000000000000\n312.000000000000\n390.000000000000\n468.000000000000\n546.000000000000\n624.000000000000\n702.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Non-octave",
+    "description": "Published rounded step size from Wendy Carlos. The repeating span is close to a fifth; there is no exact octave.",
+    "listening_hint": "",
+    "source": "Independent construction from the rounded step sizes published by Wendy Carlos: https://www.wendycarlos.com/resources/pitch.html",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "carlos",
+      "alpha",
+      "non-octave",
+      "equal steps"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/carlos-alpha.scl"
+  },
+  {
+    "source_id": "factory:carlos-beta",
+    "display_name": "Carlos Beta · 63.8-cent steps",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nCarlos Beta · 63.8-cent steps\n11\n63.800000000000\n127.600000000000\n191.400000000000\n255.200000000000\n319.000000000000\n382.800000000000\n446.600000000000\n510.400000000000\n574.200000000000\n638.000000000000\n701.800000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Non-octave",
+    "description": "Published rounded step size from Wendy Carlos. The repeating span is close to a fifth; there is no exact octave.",
+    "listening_hint": "",
+    "source": "Independent construction from the rounded step sizes published by Wendy Carlos: https://www.wendycarlos.com/resources/pitch.html",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "carlos",
+      "beta",
+      "non-octave",
+      "equal steps"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/carlos-beta.scl"
+  },
+  {
+    "source_id": "factory:carlos-gamma",
+    "display_name": "Carlos Gamma · 35.1-cent steps",
+    "scl_text": "! Oiko Inton independently generated mathematical data. CC0-1.0.\nCarlos Gamma · 35.1-cent steps\n20\n35.100000000000\n70.200000000000\n105.300000000000\n140.400000000000\n175.500000000000\n210.600000000000\n245.700000000000\n280.800000000000\n315.900000000000\n351.000000000000\n386.100000000000\n421.200000000000\n456.300000000000\n491.400000000000\n526.500000000000\n561.600000000000\n596.700000000000\n631.800000000000\n666.900000000000\n702.000000000000\n",
+    "kbm_text": null,
+    "category": "Equal Divisions/Non-octave",
+    "description": "Published rounded step size from Wendy Carlos. The repeating span is close to a fifth; there is no exact octave.",
+    "listening_hint": "",
+    "source": "Independent construction from the rounded step sizes published by Wendy Carlos: https://www.wendycarlos.com/resources/pitch.html",
+    "attribution": "Oiko Inton contributors — CC0-1.0",
+    "tags": [
+      "carlos",
+      "gamma",
+      "non-octave",
+      "equal steps"
+    ],
+    "aliases": [],
+    "favorite": false,
+    "scl_resource": "tunings/carlos-gamma.scl"
+  }
+]

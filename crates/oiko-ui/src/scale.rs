@@ -34,20 +34,21 @@ pub fn canvas_scale(scale: f32) -> f32 {
     }
 }
 
-/// Apply zoom on editor creation without asking the host to resize recursively.
-pub fn initialize_scale(context: &egui::Context, scale: f32) {
-    context.set_zoom_factor(if cfg!(target_os = "macos") {
-        1.0
-    } else {
-        closest_ui_scale(scale)
-    });
+/// Apply restored zoom whenever a window opens, using the same deferred resize
+/// path as the zoom menu. Hosts can construct editors before restoring state.
+pub fn initialize_scale(context: &egui::Context, scale: f32, logical_size: egui::Vec2) {
+    request_scale(context, scale, logical_size);
 }
 
 /// Queue a resize through egui, never call the host from inside an egui callback.
 /// The backend services viewport commands after the UI pass has completed.
 pub fn request_scale(context: &egui::Context, scale: f32, logical_size: egui::Vec2) {
     let scale = closest_ui_scale(scale);
-    initialize_scale(context, scale);
+    context.set_zoom_factor(if cfg!(target_os = "macos") {
+        1.0
+    } else {
+        scale
+    });
     if cfg!(target_os = "macos") {
         context.send_viewport_cmd(egui::ViewportCommand::InnerSize(logical_size * scale));
     }

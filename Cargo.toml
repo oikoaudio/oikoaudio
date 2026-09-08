@@ -4,6 +4,13 @@ members = [
     "crates/oiko-ui",
     "crates/oiko-plugin",
     "crates/oiko-tuning",
+    "plugins/wow/crates/wow-dsp",
+    "plugins/wow/crates/wow-plugin",
+    "plugins/weft/crates/spectral-dsp",
+    "plugins/weft/crates/spectral-plugin",
+    "plugins/weft/crates/spectral-render",
+    "plugins/inton",
+    "plugins/inton/crates/inton-core",
     "xtask",
 ]
 exclude = ["vendor/nice-plug-core", "vendor/nice-plug", "vendor/egui-baseview", "vendor/baseview"]

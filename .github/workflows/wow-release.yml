@@ -1,0 +1,19 @@
+name: Release wow
+
+on:
+  push:
+    tags: ["wow/v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    uses: ./.github/workflows/product-release.yml
+    permissions:
+      contents: write
+    secrets:
+      WEBSITE_UPDATE_TOKEN: ${{ secrets.WEBSITE_UPDATE_TOKEN }}
+    with:
+      product: wow

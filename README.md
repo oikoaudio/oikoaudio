@@ -1,16 +1,42 @@
-# Oiko Audio shared foundation
+# Oiko Audio
 
-A Cargo workspace containing the shared DSP, UI, host integration and tuning libraries, the CLAP/VST3 bundler, and their pinned dependencies. Oiko source is MIT licensed; dependency and font notices remain alongside the corresponding sources.
+Rust audio plugins and their shared libraries. One Cargo workspace contains the build inputs and upstream patches. Oiko code is MIT licensed; third-party code and fonts retain their original notices.
 
-Run from the repository root:
-
-```sh
-cargo build --workspace --locked --offline
-cargo test --workspace --locked --offline
-cargo clippy --workspace --all-targets --locked --offline -- -D warnings
-cargo fmt --all -- --check
+```text
+crates/       Shared DSP, UI, plugin integration, and tuning parser
+plugins/      Hosted products
+vendor/       One maintained copy of each patched shared dependency
+xtask/        Common CLAP and VST3 bundler
 ```
 
-Omit `--offline` when initially fetching the locked dependencies. The workspace requires Rust 1.92 or later, a C++20 compiler for the tuning parser and platform GUI development libraries for the editor integration.
+See [WoW](plugins/wow/README.md), [Weft](plugins/weft/README.md), and [Inton](plugins/inton/README.md) for product behavior. Start with the [engineering principles](docs/engineering-principles.md), [architecture](docs/architecture.md), and [upstream patch register](docs/upstream-patches.md) when changing shared code.
 
-The maintained dependencies and patch artifacts are recorded in [the patch register](docs/upstream-patches.md). Local investigations are kept outside tracked source under ignored `.scratch/`.
+## Build and test
+
+Use Rust 1.92 or later. Inton's tuning parser and Weft's MTS client need a C++ compiler; the tuning parser requires C++20. Linux GUI development packages are listed in [.github/workflows/ci.yml](.github/workflows/ci.yml). Commands below work in fish, bash, and PowerShell.
+
+```sh
+cargo test --workspace --locked
+cargo xtask bundle -p wow-plugin -p spectral-plugin -p inton --release --locked
+```
+
+Bundles go into `target/bundled/`. To build one product, select its package:
+
+```sh
+cargo xtask bundle wow-plugin --release --locked
+```
+
+For universal macOS bundles, install both Rust targets and use the same package selection:
+
+```sh
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+cargo xtask bundle-universal -p wow-plugin -p spectral-plugin -p inton --release --locked
+```
+
+Run `python3 scripts/check_workspace.py --test` for formatting, strict Clippy, dependency checks, workspace tests, individual plugin tests, and patched dependency tests. Add `--offline` when dependencies are cached. On Windows, use the installed Python command, usually `python`.
+
+## Repository boundaries
+
+Shared crates stay independent of product-specific dependencies. WoW does not acquire an MTS dependency because Inton and Weft live here. Embedded-editor integration remains in `oiko-plugin`.
+
+Plugins retain their own versions and release schedules. Release tags use `wow/v…`, `weft/v…`, or `inton/v…`. See the [release guide](docs/releases.md) for build triggers and platform archives. The website and Java `bitwig-oikontrol` remain separate repositories.

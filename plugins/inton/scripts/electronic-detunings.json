@@ -1,0 +1,202 @@
+[
+  {
+    "id": "soft-circuit",
+    "name": "Soft Circuit",
+    "offsets": [
+      0,
+      -4,
+      3,
+      -6,
+      -3,
+      2,
+      -5,
+      1,
+      -4,
+      0,
+      4,
+      -2
+    ],
+    "description": "Subtle fixed offsets for soft pads and restrained synth chords.",
+    "listening_hint": "Try a simple C minor or A minor chord; compare with 12 EDO using a sustained sound."
+  },
+  {
+    "id": "loose-clock",
+    "name": "Loose Clock",
+    "offsets": [
+      0,
+      8,
+      -6,
+      -11,
+      -7,
+      5,
+      -9,
+      2,
+      10,
+      0,
+      -8,
+      6
+    ],
+    "description": "Small irregular offsets for bass sequences and dry plucks.",
+    "listening_hint": "Try a repeating C, Eb, G, Bb pattern."
+  },
+  {
+    "id": "glass-steps",
+    "name": "Glass Steps",
+    "offsets": [
+      0,
+      -12,
+      9,
+      -16,
+      -14,
+      7,
+      -11,
+      2,
+      15,
+      0,
+      -18,
+      10
+    ],
+    "description": "Lowered thirds with raised neighboring notes for glassy arpeggios and synth chords.",
+    "listening_hint": "Try C, E, G, Bb with a bright, harmonically rich patch."
+  },
+  {
+    "id": "bent-fifths",
+    "name": "Bent Fifths",
+    "offsets": [
+      0,
+      7,
+      -10,
+      12,
+      -8,
+      15,
+      -14,
+      -18,
+      9,
+      0,
+      -11,
+      6
+    ],
+    "description": "A narrowed C-G fifth introduces tension into otherwise familiar shapes.",
+    "listening_hint": "Try sustained C-G dyads or a two-note bass ostinato."
+  },
+  {
+    "id": "split-neon",
+    "name": "Split Neon",
+    "offsets": [
+      0,
+      18,
+      -18,
+      18,
+      -18,
+      18,
+      -18,
+      18,
+      -18,
+      0,
+      -18,
+      18
+    ],
+    "description": "Alternating offsets make neighboring steps expand and contract. C and A stay fixed as tonal anchors.",
+    "listening_hint": "Try chromatic plucks or a short repeating sequence."
+  },
+  {
+    "id": "oxide",
+    "name": "Oxide",
+    "offsets": [
+      0,
+      -24,
+      14,
+      -31,
+      -18,
+      21,
+      -27,
+      4,
+      29,
+      0,
+      -22,
+      17
+    ],
+    "description": "Stronger irregular offsets for tense pads, rough-edged stabs, and sparse melodies.",
+    "listening_hint": "Try C, Eb, F, G, Bb with long releases to expose the changing intervals."
+  },
+  {
+    "id": "ripple",
+    "name": "Ripple",
+    "offsets": [
+      0,
+      14,
+      28,
+      -20,
+      -6,
+      8,
+      22,
+      -26,
+      -12,
+      0,
+      16,
+      30
+    ],
+    "description": "Groups of rising offsets followed by a reset give scalar lines an uneven contour.",
+    "listening_hint": "Try ascending semitones on a clean pluck before moving to a longer sequence."
+  },
+  {
+    "id": "warped-grid",
+    "name": "Warped Grid",
+    "offsets": [
+      0,
+      31,
+      -27,
+      38,
+      -22,
+      26,
+      -35,
+      12,
+      -29,
+      0,
+      34,
+      -18
+    ],
+    "description": "Pronounced opposing offsets for angular leads and dissonant chord fragments. Octaves remain exact even as the intervals inside them pull apart.",
+    "listening_hint": "Start with two or three notes."
+  },
+  {
+    "id": "frayed-thirds",
+    "name": "Frayed Thirds",
+    "offsets": [
+      0,
+      -5,
+      4,
+      -8,
+      8,
+      -2,
+      7,
+      2,
+      -6,
+      0,
+      9,
+      -4
+    ],
+    "description": "A nearly pure C–G fifth frames a widened C–E third and narrowed C–Eb third.",
+    "listening_hint": "Hold C–G, then add E or Eb to hear the extra beating."
+  },
+  {
+    "id": "restless-fifths",
+    "name": "Restless Fifths",
+    "offsets": [
+      0,
+      6,
+      2,
+      -9,
+      -14,
+      10,
+      -4,
+      -9,
+      7,
+      0,
+      -11,
+      -3
+    ],
+    "description": "A nearly pure C–E major third meets a narrowed C–G fifth.",
+    "listening_hint": "Hold C–E, then add G. Try a sustained saw or pulse sound."
+  }
+]

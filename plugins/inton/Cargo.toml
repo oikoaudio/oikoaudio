@@ -1,0 +1,38 @@
+[package]
+name = "inton"
+version = "0.4.0-beta.1"
+edition = "2024"
+license = "MIT"
+rust-version = "1.92"
+
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+inton-core = { path = "crates/inton-core" }
+oiko-ui.workspace = true
+oiko-plugin.workspace = true
+egui.workspace = true
+nice-plug.workspace = true
+nice-plug-egui.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+keyboard-types = "0.8.3"
+
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "allow"
+
+[dev-dependencies]
+libloading = "0.8"
+clap-sys = "0.5.0"
+png = "0.18"
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+x11rb = "0.13"
+
+[package.metadata.oiko]
+role = "plugin"
+product = "inton"
+integrations = ["oiko-tuning"]

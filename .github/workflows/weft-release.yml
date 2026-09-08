@@ -1,0 +1,25 @@
+name: Release weft
+
+on:
+  push:
+    tags: ["weft/v*"]
+  workflow_dispatch:
+    inputs:
+      windows_only:
+        description: Build only the Windows test archive
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    uses: ./.github/workflows/product-release.yml
+    permissions:
+      contents: write
+    secrets:
+      WEBSITE_UPDATE_TOKEN: ${{ secrets.WEBSITE_UPDATE_TOKEN }}
+    with:
+      product: weft
+      windows_only: ${{ inputs.windows_only || false }}

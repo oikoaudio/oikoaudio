@@ -1,0 +1,3 @@
+# Preserve upstream snapshots and patch context, including parser line-ending fixtures.
+vendor/** -text -whitespace
+patches/*.patch -text -whitespace

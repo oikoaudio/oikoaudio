@@ -1,0 +1,3 @@
+# Keep embedded scale data identical across platforms and generated exports.
+*.scl text eol=lf
+*.kbm text eol=lf

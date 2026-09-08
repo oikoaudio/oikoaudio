@@ -1,0 +1,34 @@
+[
+  {
+    "id": "12edo",
+    "hint": "Hold a plain major chord. Compare Soft Circuit and listen for changes in its pulse."
+  },
+  {
+    "id": "detune-soft-circuit",
+    "hint": "Try a simple C minor or A minor chord; compare with 12 EDO using a sustained sound. Listen for a gentle shimmer between the notes."
+  },
+  {
+    "id": "quarter-comma",
+    "hint": "Sustain a major third, then move the chord up one key. Does it settle as easily?"
+  },
+  {
+    "id": "19edo",
+    "hint": "Hold a root and a fifth, 11 keys apart. Move a middle note from 5 to 6 keys above the root; listen to the third widen."
+  },
+  {
+    "id": "31edo",
+    "hint": "Hold a root and a fifth, 18 keys apart. Add a note 10 keys above the root, then lower it one key. Listen to the change in tension."
+  },
+  {
+    "id": "22edo",
+    "hint": "Hold a root and a fifth, 13 keys apart. Move a middle note through 5, 6, 7, then 8 keys above the root. Compare the four chord colours."
+  },
+  {
+    "id": "7edo",
+    "hint": "Play a short melody over a drone. Repeat it seven keys higher and listen for the octave."
+  },
+  {
+    "id": "13ed3",
+    "hint": "Hold a drone and explore one neighbouring key at a time. Repeat a phrase 13 keys higher: it returns above the octave."
+  }
+]

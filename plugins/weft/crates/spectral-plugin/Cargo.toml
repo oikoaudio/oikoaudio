@@ -1,0 +1,33 @@
+[package]
+name = "spectral-plugin"
+version = "0.4.0-beta.1"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+oiko-dsp.workspace = true
+oiko-ui.workspace = true
+oiko-plugin.workspace = true
+copypasta = { version = "0.10.2", default-features = false, features = ["x11"] }
+rfd = "0.16.0"
+egui.workspace = true
+nice-plug.workspace = true
+nice-plug-egui.workspace = true
+realfft = "3.5"
+serde = { version = "1.0", features = ["derive"] }
+spectral-dsp = { path = "../spectral-dsp" }
+
+[build-dependencies]
+cc = "1"
+
+[dev-dependencies]
+nice-assert-no-alloc = "1"
+
+[package.metadata.oiko]
+role = "plugin"
+product = "weft"
