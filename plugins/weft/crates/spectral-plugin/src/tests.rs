@@ -164,7 +164,6 @@ fn curve_state_round_trips_through_persistence() {
 #[test]
 fn interface_scale_round_trips_and_stays_within_supported_bounds() {
     let scale = UiScaleState::default();
-    assert!((scale.get() - 1.25).abs() < 1.0e-6);
     scale.set(1.75);
     let snapshot = PersistentField::map(&scale, |value| *value);
     let restored = UiScaleState::default();
@@ -292,7 +291,7 @@ fn voice_ids_keep_overlapping_notes_independent() {
     let mut plugin = SpectralPlugin::default();
     plugin.start_voice(Some(10), 1, 60, 1.0);
     plugin.start_voice(Some(11), 1, 60, 1.0);
-    plugin.release_voice(Some(10), 1, 60);
+    plugin.release_voice(VoiceID::ID(10), Channel::Number(1), Key::Number(60));
 
     let first = plugin
         .voices
@@ -433,8 +432,8 @@ fn sustain_releases_only_pedal_held_voices_on_its_channel() {
     plugin.start_voice(Some(1), 1, 60, 1.0);
     plugin.start_voice(Some(2), 2, 60, 1.0);
     plugin.set_sustain(1, true);
-    plugin.release_voice(Some(1), 1, 60);
-    plugin.release_voice(Some(2), 2, 60);
+    plugin.release_voice(VoiceID::ID(1), Channel::Number(1), Key::Number(60));
+    plugin.release_voice(VoiceID::ID(2), Channel::Number(2), Key::Number(60));
     advance_voices(&mut plugin.voices, 0.1, 0.0, 0.0);
     assert!(plugin.voices[0].occupied && plugin.voices[0].sustained);
     assert!(!plugin.voices[1].occupied);
@@ -455,8 +454,8 @@ fn choke_overrides_sustain_and_reset_clears_the_pedal() {
     let mut plugin = SpectralPlugin::default();
     plugin.set_sustain(0, true);
     plugin.start_voice(Some(1), 0, 60, 1.0);
-    plugin.release_voice(Some(1), 0, 60);
-    plugin.choke_voice(Some(1), 0, 60);
+    plugin.release_voice(VoiceID::ID(1), Channel::Number(0), Key::Number(60));
+    plugin.choke_voice(VoiceID::ID(1), Channel::Number(0), Key::Number(60));
     assert!(!plugin.voices[0].occupied);
     plugin.clear_notes();
     assert!(!plugin.channel_sustain[0]);
@@ -502,7 +501,7 @@ fn hold_mode_pins_incoming_notes() {
     let mut plugin = SpectralPlugin::default();
     plugin.params.pinned_notes.toggle_capture_incoming();
     plugin.start_voice(None, 0, 64, 1.0);
-    plugin.release_voice(None, 0, 64);
+    plugin.release_voice(VoiceID::Wildcard, Channel::Number(0), Key::Number(64));
     assert!(plugin.params.pinned_notes.get(64));
     plugin.params.pinned_notes.toggle_capture_incoming();
     assert!(!plugin.params.pinned_notes.get(64));

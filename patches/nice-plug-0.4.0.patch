@@ -1,238 +1,52 @@
---- a/Cargo.toml
-+++ b/Cargo.toml
-@@ -78,6 +78,18 @@
- path = "src/lib.rs"
- 
- [[test]]
-+name = "clap_state_stream"
-+path = "tests/clap_state_stream.rs"
-+
-+[[test]]
-+name = "note_expressions"
-+path = "tests/note_expressions.rs"
-+
-+[[test]]
-+name = "clap_event_timing"
-+path = "tests/clap_event_timing.rs"
-+
-+[[test]]
- name = "derive_params"
- path = "tests/derive_params.rs"
- 
 --- a/src/wrapper/clap/util.rs
 +++ b/src/wrapper/clap/util.rs
-@@ -133,7 +133,7 @@
-                 (slice.len() - read_pos) as u64,
-             )
+@@ -140,6 +140,10 @@
+             return None;
          };
--        if bytes_read <= 0 {
-+        if bytes_read <= 0 || bytes_read as u64 > (slice.len() - read_pos) as u64 {
-             return false;
-         }
  
++        if bytes_read > slice.len() - total_bytes_read {
++            return None;
++        }
++
+         if bytes_read == 0 {
+             break;
+         }
 --- a/src/wrapper/clap/wrapper.rs
 +++ b/src/wrapper/clap/wrapper.rs
-@@ -993,20 +993,18 @@
-         let mut input_events = self.input_events.borrow_mut();
-         input_events.clear();
- 
--        // To achieve this, we'll always read one event ahead
-         let num_events = unsafe {
-             clap_call! { in_=>size(in_) }
-         };
--        if num_events == 0 {
--            return None;
--        }
--
--        let start_idx = resume_from_event_idx as u32;
--        let mut event: *const clap_event_header = unsafe {
--            clap_call! { in_=>get(in_, start_idx) }
--        };
--        for next_event_idx in (start_idx + 1)..num_events {
-+        for event_idx in (resume_from_event_idx as u32)..num_events {
-             unsafe {
-+                let event: *const clap_event_header = clap_call! { in_=>get(in_, event_idx) };
-+                // Check the current event before applying it, including the first event in the
-+                // buffer. A later parameter or transport change belongs to the next process slice.
-+                if (*event).time > current_sample_idx as u32 && stop_predicate(event) {
-+                    return Some(((*event).time as usize, event_idx as usize));
-+                }
+@@ -115,7 +115,7 @@
+ ///
+ /// If your plugin needs more storgage space than this, please post an issue in the nice-plug
+ /// repository.
+-const MAX_STATE_BYTES: u64 = 268_435_456;
 +
-                 self.handle_in_event(
-                     event,
-                     &mut input_events,
-@@ -1014,26 +1012,7 @@
-                     current_sample_idx,
-                     total_buffer_len,
-                 );
--                // Stop just before the next parameter change or transport information event at a sample
--                // after the current sample
--                let next_event: *const clap_event_header =
--                    clap_call! { in_=>get(in_, next_event_idx) };
--                if (*next_event).time > current_sample_idx as u32 && stop_predicate(next_event) {
--                    return Some(((*next_event).time as usize, next_event_idx as usize));
--                }
--                event = next_event;
--            }
--        }
--
--        // Don't forget about the last event
--        unsafe {
--            self.handle_in_event(
--                event,
--                &mut input_events,
--                Some(transport_info),
--                current_sample_idx,
--                total_buffer_len,
--            );
-+            }
-         }
  
-         None
-@@ -1156,8 +1135,8 @@
-                         },
-                         note_id: voice_id.unwrap_or(-1),
-                         port_index: 0,
--                        channel: channel as i16,
--                        key: note as i16,
-+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
-+                        key: if note == u8::MAX { -1 } else { note as i16 },
-                         velocity: velocity as f64,
-                     };
- 
-@@ -1182,8 +1161,8 @@
-                         },
-                         note_id: voice_id.unwrap_or(-1),
-                         port_index: 0,
--                        channel: channel as i16,
--                        key: note as i16,
-+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
-+                        key: if note == u8::MAX { -1 } else { note as i16 },
-                         velocity: velocity as f64,
-                     };
- 
-@@ -1209,8 +1188,8 @@
-                         },
-                         note_id: voice_id.unwrap_or(-1),
-                         port_index: 0,
--                        channel: channel as i16,
--                        key: note as i16,
-+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
-+                        key: if note == u8::MAX { -1 } else { note as i16 },
-                         velocity: 0.0,
-                     };
- 
-@@ -1236,8 +1215,8 @@
-                         expression_id: CLAP_NOTE_EXPRESSION_PRESSURE,
-                         note_id: voice_id.unwrap_or(-1),
-                         port_index: 0,
--                        channel: channel as i16,
--                        key: note as i16,
-+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
-+                        key: if note == u8::MAX { -1 } else { note as i16 },
-                         value: pressure as f64,
-                     };
- 
-@@ -1263,8 +1242,8 @@
-                         expression_id: CLAP_NOTE_EXPRESSION_VOLUME,
-                         note_id: voice_id.unwrap_or(-1),
-                         port_index: 0,
--                        channel: channel as i16,
--                        key: note as i16,
-+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
-+                        key: if note == u8::MAX { -1 } else { note as i16 },
-                         value: gain as f64,
-                     };
- 
-@@ -1290,8 +1269,8 @@
-                         expression_id: CLAP_NOTE_EXPRESSION_PAN,
-                         note_id: voice_id.unwrap_or(-1),
-                         port_index: 0,
--                        channel: channel as i16,
--                        key: note as i16,
-+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
-+                        key: if note == u8::MAX { -1 } else { note as i16 },
-                         value: (pan as f64 + 1.0) / 2.0,
-                     };
- 
-@@ -1317,8 +1296,8 @@
-                         expression_id: CLAP_NOTE_EXPRESSION_TUNING,
-                         note_id: voice_id.unwrap_or(-1),
-                         port_index: 0,
--                        channel: channel as i16,
--                        key: note as i16,
-+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
-+                        key: if note == u8::MAX { -1 } else { note as i16 },
-                         value: tuning as f64,
-                     };
- 
-@@ -1344,8 +1323,8 @@
-                         expression_id: CLAP_NOTE_EXPRESSION_VIBRATO,
-                         note_id: voice_id.unwrap_or(-1),
-                         port_index: 0,
--                        channel: channel as i16,
--                        key: note as i16,
-+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
-+                        key: if note == u8::MAX { -1 } else { note as i16 },
-                         value: vibrato as f64,
-                     };
- 
-@@ -1371,8 +1350,8 @@
-                         expression_id: CLAP_NOTE_EXPRESSION_EXPRESSION,
-                         note_id: voice_id.unwrap_or(-1),
-                         port_index: 0,
--                        channel: channel as i16,
--                        key: note as i16,
-+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
-+                        key: if note == u8::MAX { -1 } else { note as i16 },
-                         value: expression as f64,
-                     };
- 
-@@ -1398,8 +1377,8 @@
-                         expression_id: CLAP_NOTE_EXPRESSION_BRIGHTNESS,
-                         note_id: voice_id.unwrap_or(-1),
-                         port_index: 0,
--                        channel: channel as i16,
--                        key: note as i16,
-+                        channel: if channel == u8::MAX { -1 } else { channel as i16 },
-+                        key: if note == u8::MAX { -1 } else { note as i16 },
-                         value: brightness as f64,
-                     };
- 
-@@ -1580,6 +1559,7 @@
+ pub struct Wrapper<P: ClapPlugin> {
+     /// A reference to this object, upgraded to an `Arc<Self>` for the GUI context.
+@@ -1288,6 +1288,7 @@
              (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_ON) => {
                  if P::MIDI_INPUT >= MidiConfig::Basic {
                      let event = unsafe { &*(event as *const clap_event_note) };
 +                    if event.port_index != 0 || !(0..16).contains(&event.channel) || !(0..128).contains(&event.key) { return; }
-                     input_events.push_back(NoteEvent::NoteOn {
-                         // When splitting up the buffer for sample accurate automation all events
-                         // should be relative to the block
-@@ -1598,6 +1578,7 @@
+ 
+                     push_event(
+                         input_events,
+@@ -1306,6 +1307,7 @@
              (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_OFF) => {
                  if P::MIDI_INPUT >= MidiConfig::Basic {
                      let event = unsafe { &*(event as *const clap_event_note) };
 +                    if !(-1..=0).contains(&event.port_index) || !(-1..16).contains(&event.channel) || !(-1..128).contains(&event.key) { return; }
-                     input_events.push_back(NoteEvent::NoteOff {
-                         timing,
-                         voice_id: if event.note_id != -1 {
-@@ -1614,6 +1595,7 @@
+ 
+                     push_event(
+                         input_events,
+@@ -1322,6 +1324,7 @@
              (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_CHOKE) => {
                  if P::MIDI_INPUT >= MidiConfig::Basic {
                      let event = unsafe { &*(event as *const clap_event_note) };
 +                    if !(-1..=0).contains(&event.port_index) || !(-1..16).contains(&event.channel) || !(-1..128).contains(&event.key) { return; }
-                     input_events.push_back(NoteEvent::Choke {
-                         timing,
-                         voice_id: if event.note_id != -1 {
-@@ -1621,7 +1603,7 @@
-                         } else {
-                             None
-                         },
--                        // FIXME: These values are also allowed to be -1, we need to support that
-+                        // Preserve -1 as NOTE_ADDRESS_WILDCARD (u8::MAX).
-                         channel: event.channel as u8,
-                         note: event.key as u8,
-                     });
-@@ -1629,8 +1611,9 @@
+ 
+                     push_event(
+                         input_events,
+@@ -1336,8 +1339,9 @@
              }
              (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_EXPRESSION) => {
                  if P::MIDI_INPUT >= MidiConfig::Basic {
@@ -242,22 +56,8 @@
 +
                      match event.expression_id {
                          CLAP_NOTE_EXPRESSION_PRESSURE => {
-                             input_events.push_back(NoteEvent::PolyPressure {
-@@ -1983,6 +1966,13 @@
-             "Plugin returned false when reinitializing after loading state"
-         );
- 
-+        // State restore changes parameter values without host automation events.
-+        // Invalidate the host's cached values, including with the editor closed.
-+        if success && self.host_params.borrow().is_some() {
-+            let task_posted = self.schedule_gui(Task::RescanParamValues);
-+            crate::nice_debug_assert!(task_posted, "The task queue is full, dropping task...");
-+        }
-+
-         #[cfg(feature = "editor")]
-         {
-             // Reinitialize the plugin after loading state so it can respond to the new parameter values
-@@ -3314,8 +3304,10 @@
+                             push_event(
+@@ -3120,8 +3124,10 @@
                  let info = unsafe { &mut *info };
                  info.id = 0;
                  // NOTE: REAPER won't send us SysEx if we don't support the MIDI dialect
@@ -269,21 +69,17 @@
                  info.preferred_dialect = CLAP_NOTE_DIALECT_CLAP;
                  strlcpy(&mut info.name, "Note Input");
  
-@@ -3641,17 +3633,37 @@
+@@ -3445,27 +3451,37 @@
              );
              return false;
          }
 -        let length = u64::from_le_bytes(length_bytes);
--
--        let mut read_buffer: Vec<u8> = Vec::with_capacity(length as usize);
--        if !read_stream(unsafe { &*stream }, read_buffer.spare_capacity_mut()) {
--            crate::nice_debug_assert_failure!(
--                "Error or end of stream while reading the state buffer from the stream."
--            );
+-        // Protect against OOM errors if the metadata is malformed.
+-        if length > MAX_STATE_BYTES {
+-            crate::nice_error!("Failed to load state: Malformed length");
 -            return false;
 -        }
--        unsafe {
--            read_buffer.set_len(length as usize);
+-
 +        let declared_length = u64::from_le_bytes(length_bytes);
 +        // Vec byte capacities must fit in isize as well as usize. This is a platform
 +        // representation limit, not a preset-size policy imposed on plugins.
@@ -296,7 +92,20 @@
 +        // reserving its entire claimed length before discovering a truncated stream.
 +        // This bounds each read, not the total state size (samplers may have large states).
 +        const READ_CHUNK_BYTES: usize = 64 * 1024;
-+        let mut read_buffer: Vec<u8> = Vec::new();
+         let mut read_buffer: Vec<u8> = Vec::new();
+-
+-        if read_buffer.try_reserve_exact(length as usize).is_err() {
+-            crate::nice_error!("Failed to load state: Failed to allocate buffer for state stream");
+-            return false;
+-        }
+-
+-        let bytes_read = read_stream(unsafe { &*stream }, read_buffer.spare_capacity_mut());
+-        let Some(bytes_read) = bytes_read else {
+-            crate::nice_error!("Failed to load state: Error while reading the state buffer");
+-            return false;
+-        };
+-        unsafe {
+-            read_buffer.set_len(bytes_read);
 +        while read_buffer.len() < length {
 +            let chunk_len = (length - read_buffer.len()).min(READ_CHUNK_BYTES);
 +            if read_buffer.try_reserve(chunk_len).is_err() {
@@ -305,19 +114,32 @@
 +            // Capacity may exceed the request after geometric growth. Read only the
 +            // required bytes so we neither consume beyond the envelope nor expose
 +            // uninitialized spare capacity to the deserializer.
-+            if !read_stream(
++            if read_stream(
 +                unsafe { &*stream },
 +                &mut read_buffer.spare_capacity_mut()[..chunk_len],
-+            ) {
++            ) != Some(chunk_len) {
 +                return false;
 +            }
 +            unsafe {
-+                // read_stream initialized this entire chunk before returning true.
++                // read_stream initialized this entire chunk before returning Some(chunk_len).
 +                read_buffer.set_len(read_buffer.len() + chunk_len);
 +            }
          }
  
          match unsafe { state::deserialize_json(&read_buffer) } {
+--- a/src/wrapper/clap.rs
++++ b/src/wrapper/clap.rs
+@@ -34,6 +34,10 @@
+     /// Keywords describing the plugin. The host may use this to classify the plugin in its plugin
+     /// browser.
+     const CLAP_FEATURES: &'static [ClapFeature];
++
++    /// Advertise MIDI MPE input in addition to ordinary MIDI and native CLAP notes.
++    /// The plugin must implement channel allocation, zone controls and bend ranges.
++    const CLAP_SUPPORTS_MPE: bool = false;
+ 
+     /// If set, this informs the host about the plugin's capabilities for polyphonic modulation.
+     const CLAP_POLY_MODULATION_CONFIG: Option<PolyModulationConfig> = None;
 --- a/src/wrapper/state.rs
 +++ b/src/wrapper/state.rs
 @@ -139,6 +139,10 @@
@@ -331,6 +153,207 @@
  
      let sample_rate = current_buffer_config.map(|c| c.sample_rate);
      for (param_id_str, param_value) in &state.params {
+--- a/src/wrapper/vst3/note_expressions.rs
++++ b/src/wrapper/vst3/note_expressions.rs
+@@ -9,7 +9,7 @@
+ type NoteId = i32;
+ 
+ /// The number of notes we'll keep track of for mapping note IDs to channel+note combinations.
+-const NOTE_IDS_LEN: usize = 32;
++const NOTE_IDS_LEN: usize = 128;
+ 
+ /// `kVolumeTypeID`
+ pub const VOLUME_EXPRESSION_ID: u32 = 0;
+@@ -64,11 +64,11 @@
+ /// expressions are identified only with a note ID. To account for that, we'll keep track of the
+ /// most recent note IDs we've encountered so we can later map those IDs back to a note and channel
+ /// combination.
+-#[derive(Debug, Default)]
++#[derive(Debug)]
+ pub struct NoteExpressionController {
+-    /// The last 32 note IDs we've seen. We'll do a linear search every time we receive a note
++    /// The most recent note IDs we've seen. We'll do a linear search every time we receive a note
+     /// expression value event to find the matching note and channel.
+-    note_ids: [(NoteId, MidiNote, MidiChannel); NOTE_IDS_LEN],
++    note_ids: [Option<(NoteId, MidiNote, MidiChannel)>; NOTE_IDS_LEN],
+     /// The index in the `note_ids` ring buffer the next event should be inserted at, wraps back
+     /// around to 0 when reaching the end.
+     note_ids_idx: usize,
+@@ -88,15 +88,32 @@
+     pub unit: &'static str,
+ }
+ 
++impl Default for NoteExpressionController {
++    fn default() -> Self {
++        Self {
++            note_ids: [None; NOTE_IDS_LEN],
++            note_ids_idx: 0,
++        }
++    }
++}
++
+ impl NoteExpressionController {
+     /// Register the note ID from a note on event so it can later be retrieved when handling a note
+     /// expression value event.
+     pub fn register_note(&mut self, event: &NoteOnEvent) {
+-        let pitch = u8::try_from(event.pitch).unwrap_or(0);
+-        let channel = u8::try_from(event.channel).unwrap_or(0);
+-
+-        self.note_ids[self.note_ids_idx] = (event.noteId, pitch, channel);
+-        self.note_ids_idx = (self.note_ids_idx + 1) % NOTE_IDS_LEN;
++        if event.noteId < 0 {
++            return;
++        }
++        let index = self
++            .note_ids
++            .iter()
++            .position(|entry| entry.is_some_and(|(id, _, _)| id == event.noteId))
++            .unwrap_or_else(|| {
++                let index = self.note_ids_idx;
++                self.note_ids_idx = (index + 1) % NOTE_IDS_LEN;
++                index
++            });
++        self.note_ids[index] = Some((event.noteId, event.pitch as u8, event.channel as u8));
+     }
+ 
+     /// Translate the note expression value event into an internal nice-plug event, if we handle the
+@@ -108,17 +125,28 @@
+         event: &NoteExpressionValueEvent,
+     ) -> Option<NoteEvent<S>> {
+         // We're calling it a voice ID, VST3 (and CLAP) calls it a note ID
+-        let (note_id, key, channel) = *self
++        if event.noteId < 0 || !event.value.is_finite() {
++            return None;
++        }
++        // The ID remains authoritative even after the bounded address cache wraps.
++        // Do not drop expression for a long-held voice just because other notes played.
++        let (note_id, key, channel) = self
+             .note_ids
+             .iter()
+-            .find(|(note_id, _, _)| *note_id == event.noteId)?;
++            .flatten()
++            .find(|(id, _, _)| *id == event.noteId)
++            .copied()
++            .unwrap_or((event.noteId, u8::MAX, u8::MAX));
++
++        let channel = if channel == u8::MAX { Channel::Wildcard } else { Channel::Number(channel) };
++        let key = if key == u8::MAX { Key::Wildcard } else { Key::Number(key) };
+ 
+         match event.typeId {
+             VOLUME_EXPRESSION_ID => Some(NoteEvent::PolyVolume {
+                 timing,
+                 voice_id: VoiceID::ID(note_id),
+-                channel: Channel::Number(channel),
+-                key: Key::Number(key),
++                channel,
++                key,
+                 // Because expression values in VST3 are always in the `[0, 1]` range, they added a
+                 // 4x scaling factor here to allow the values to go from -infinity to +12 dB
+                 gain: event.value as f32 * 4.0,
+@@ -126,16 +154,16 @@
+             PAN_EXPRESSION_ID => Some(NoteEvent::PolyPan {
+                 timing,
+                 voice_id: VoiceID::ID(note_id),
+-                channel: Channel::Number(channel),
+-                key: Key::Number(key),
++                channel,
++                key,
+                 // Our panning expressions are symmetrical around 0
+                 pan: (event.value as f32 * 2.0) - 1.0,
+             }),
+             TUNING_EXPRESSION_ID => Some(NoteEvent::PolyTuning {
+                 timing,
+                 voice_id: VoiceID::ID(note_id),
+-                channel: Channel::Number(channel),
+-                key: Key::Number(key),
++                channel,
++                key,
+                 // This denormalized to the same [-120, 120] range used by CLAP and our expression
+                 // events
+                 tuning: 240.0 * (event.value as f32 - 0.5),
+@@ -143,23 +171,23 @@
+             VIBRATO_EXPRESSION_ID => Some(NoteEvent::PolyVibrato {
+                 timing,
+                 voice_id: VoiceID::ID(note_id),
+-                channel: Channel::Number(channel),
+-                key: Key::Number(key),
++                channel,
++                key,
+                 vibrato: event.value as f32,
+             }),
+-            EXPRESSION_EXPRESSION_ID => Some(NoteEvent::PolyBrightness {
+-                timing,
+-                voice_id: VoiceID::ID(note_id),
+-                channel: Channel::Number(channel),
+-                key: Key::Number(key),
++            EXPRESSION_EXPRESSION_ID => Some(NoteEvent::PolyExpression {
++                timing,
++                voice_id: VoiceID::ID(note_id),
++                channel,
++                key,
++                expression: event.value as f32,
++            }),
++            BRIGHTNESS_EXPRESSION_ID => Some(NoteEvent::PolyBrightness {
++                timing,
++                voice_id: VoiceID::ID(note_id),
++                channel,
++                key,
+                 brightness: event.value as f32,
+-            }),
+-            BRIGHTNESS_EXPRESSION_ID => Some(NoteEvent::PolyExpression {
+-                timing,
+-                voice_id: VoiceID::ID(note_id),
+-                channel: Channel::Number(channel),
+-                key: Key::Number(key),
+-                expression: event.value as f32,
+             }),
+             _ => None,
+         }
+--- a/src/wrapper/vst3/wrapper.rs
++++ b/src/wrapper/vst3/wrapper.rs
+@@ -1047,6 +1047,7 @@
+                 }
+             };
+ 
++            *self.inner.note_expression_controller.borrow_mut() = super::note_expressions::NoteExpressionController::default();
+             process_wrapper(|| plugin.reset());
+         }
+ 
+@@ -1285,6 +1286,20 @@
+                                     velocity: event.velocity,
+                                 }),
+                             );
++                            // VST3 note-on tuning uses cents; common tuning uses semitones.
++                            if event.tuning.is_finite() && event.tuning != 0.0 {
++                                push_process_event(
++                                    &mut process_events,
++                                    ProcessEvent::NoteEvent(NoteEvent::PolyTuning {
++                                        timing,
++                                        voice_id: voice_from_i32(event.noteId),
++                                        channel: channel_from_i16(event.channel),
++                                        key: key_from_i16(event.pitch),
++                                        tuning: event.tuning / 100.0,
++                                    }),
++                                );
++                            }
++
+                         } else if event.r#type == EventTypes_::kNoteOffEvent as u16 {
+                             let event = unsafe { event.__field0.noteOff };
+ 
+@@ -1732,7 +1747,12 @@
+         // This should not be needed since they're predefined, but then again you'd think you also
+         // wouldn't need to define predefined note expressions now do you?
+         info.valueDesc = NoteExpressionValueDescription {
+-            defaultValue: 0.5,
++            defaultValue: match note_expression_info.type_id {
++                note_expressions::VOLUME_EXPRESSION_ID => 0.25,
++                note_expressions::VIBRATO_EXPRESSION_ID => 0.0,
++                note_expressions::EXPRESSION_EXPRESSION_ID => 1.0,
++                _ => 0.5,
++            },
+             minimum: 0.0,
+             maximum: 1.0,
+             stepCount: 0,
 --- /dev/null
 +++ b/tests/clap_event_timing.rs
 @@ -0,0 +1,420 @@
@@ -402,7 +425,7 @@
 +        buffer.as_slice()[0].fill(self.params.value.value());
 +        buffer.as_slice()[1].fill(context.transport().tempo.unwrap_or(120.0) as f32);
 +        while let Some(event) = context.next_event() {
-+            context.send_event(event);
++            let _ = context.try_send_event(event);
 +        }
 +        ProcessStatus::Normal
 +    }
@@ -1030,173 +1053,9 @@
 +    input.end_result = i64::MAX;
 +    assert!(!load(&mut input, false).0);
 +}
---- a/src/wrapper/clap.rs
-+++ b/src/wrapper/clap.rs
-@@ -34,6 +34,10 @@
-     /// Keywords describing the plugin. The host may use this to classify the plugin in its plugin
-     /// browser.
-     const CLAP_FEATURES: &'static [ClapFeature];
-+
-+    /// Advertise MIDI MPE input in addition to ordinary MIDI and native CLAP notes.
-+    /// The plugin must implement channel allocation, zone controls and bend ranges.
-+    const CLAP_SUPPORTS_MPE: bool = false;
- 
-     /// If set, this informs the host about the plugin's capabilities for polyphonic modulation.
-     const CLAP_POLY_MODULATION_CONFIG: Option<PolyModulationConfig> = None;
---- a/src/wrapper/vst3/note_expressions.rs
-+++ b/src/wrapper/vst3/note_expressions.rs
-@@ -9,7 +9,7 @@
- type NoteId = i32;
- 
- /// The number of notes we'll keep track of for mapping note IDs to channel+note combinations.
--const NOTE_IDS_LEN: usize = 32;
-+const NOTE_IDS_LEN: usize = 128;
- 
- /// `kVolumeTypeID`
- pub const VOLUME_EXPRESSION_ID: u32 = 0;
-@@ -64,11 +64,11 @@
- /// expressions are identified only with a note ID. To account for that, we'll keep track of the
- /// most recent note IDs we've encountered so we can later map those IDs back to a note and channel
- /// combination.
--#[derive(Debug, Default)]
-+#[derive(Debug)]
- pub struct NoteExpressionController {
--    /// The last 32 note IDs we've seen. We'll do a linear search every time we receive a note
-+    /// The most recent note IDs we've seen. We'll do a linear search every time we receive a note
-     /// expression value event to find the matching note and channel.
--    note_ids: [(NoteId, MidiNote, MidiChannel); NOTE_IDS_LEN],
-+    note_ids: [Option<(NoteId, MidiNote, MidiChannel)>; NOTE_IDS_LEN],
-     /// The index in the `note_ids` ring buffer the next event should be inserted at, wraps back
-     /// around to 0 when reaching the end.
-     note_ids_idx: usize,
-@@ -88,12 +88,32 @@
-     pub unit: &'static str,
- }
- 
-+impl Default for NoteExpressionController {
-+    fn default() -> Self {
-+        Self {
-+            note_ids: [None; NOTE_IDS_LEN],
-+            note_ids_idx: 0,
-+        }
-+    }
-+}
-+
- impl NoteExpressionController {
-     /// Register the note ID from a note on event so it can later be retrieved when handling a note
-     /// expression value event.
-     pub fn register_note(&mut self, event: &NoteOnEvent) {
--        self.note_ids[self.note_ids_idx] = (event.noteId, event.pitch as u8, event.channel as u8);
--        self.note_ids_idx = (self.note_ids_idx + 1) % NOTE_IDS_LEN;
-+        if event.noteId < 0 {
-+            return;
-+        }
-+        let index = self
-+            .note_ids
-+            .iter()
-+            .position(|entry| entry.is_some_and(|(id, _, _)| id == event.noteId))
-+            .unwrap_or_else(|| {
-+                let index = self.note_ids_idx;
-+                self.note_ids_idx = (index + 1) % NOTE_IDS_LEN;
-+                index
-+            });
-+        self.note_ids[index] = Some((event.noteId, event.pitch as u8, event.channel as u8));
-     }
- 
-     /// Translate the note expression value event into an internal nice-plug event, if we handle the
-@@ -105,10 +125,18 @@
-         event: &NoteExpressionValueEvent,
-     ) -> Option<NoteEvent<S>> {
-         // We're calling it a voice ID, VST3 (and CLAP) calls it a note ID
--        let (note_id, note, channel) = *self
-+        if event.noteId < 0 || !event.value.is_finite() {
-+            return None;
-+        }
-+        // The ID remains authoritative even after the bounded address cache wraps.
-+        // Do not drop expression for a long-held voice just because other notes played.
-+        let (note_id, note, channel) = self
-             .note_ids
-             .iter()
--            .find(|(note_id, _, _)| *note_id == event.noteId)?;
-+            .flatten()
-+            .find(|(id, _, _)| *id == event.noteId)
-+            .copied()
-+            .unwrap_or((event.noteId, u8::MAX, u8::MAX));
- 
-         match event.typeId {
-             VOLUME_EXPRESSION_ID => Some(NoteEvent::PolyVolume {
-@@ -144,19 +172,19 @@
-                 note,
-                 vibrato: event.value as f32,
-             }),
--            EXPRESSION_EXPRESSION_ID => Some(NoteEvent::PolyBrightness {
-+            EXPRESSION_EXPRESSION_ID => Some(NoteEvent::PolyExpression {
-+                timing,
-+                voice_id: Some(note_id),
-+                channel,
-+                note,
-+                expression: event.value as f32,
-+            }),
-+            BRIGHTNESS_EXPRESSION_ID => Some(NoteEvent::PolyBrightness {
-                 timing,
-                 voice_id: Some(note_id),
-                 channel,
-                 note,
-                 brightness: event.value as f32,
--            }),
--            BRIGHTNESS_EXPRESSION_ID => Some(NoteEvent::PolyExpression {
--                timing,
--                voice_id: Some(note_id),
--                channel,
--                note,
--                expression: event.value as f32,
-             }),
-             _ => None,
-         }
---- a/src/wrapper/vst3/wrapper.rs
-+++ b/src/wrapper/vst3/wrapper.rs
-@@ -988,6 +988,7 @@
-                 }
-             };
- 
-+            *self.inner.note_expression_controller.borrow_mut() = NoteExpressionController::default();
-             process_wrapper(|| plugin.reset());
-         }
- 
-@@ -1165,6 +1166,16 @@
-                                 note: event.pitch as u8,
-                                 velocity: event.velocity,
-                             }));
-+                            // NoteOnEvent tuning is in cents; common tuning is in semitones.
-+                            if event.tuning.is_finite() && event.tuning != 0.0 {
-+                                process_events.push(ProcessEvent::NoteEvent(NoteEvent::PolyTuning {
-+                                    timing,
-+                                    voice_id: (event.noteId >= 0).then_some(event.noteId),
-+                                    channel: event.channel as u8,
-+                                    note: event.pitch as u8,
-+                                    tuning: event.tuning / 100.0,
-+                                }));
-+                            }
-                         } else if event.r#type == EventTypes_::kNoteOffEvent as u16 {
-                             let event = unsafe { event.__field0.noteOff };
-                             process_events.push(ProcessEvent::NoteEvent(NoteEvent::NoteOff {
-@@ -1818,7 +1829,12 @@
-         // This should not be needed since they're predefined, but then again you'd think you also
-         // wouldn't need to define predefined note expressions now do you?
-         info.valueDesc = NoteExpressionValueDescription {
--            defaultValue: 0.5,
-+            defaultValue: match note_expression_info.type_id {
-+                note_expressions::VOLUME_EXPRESSION_ID => 0.25,
-+                note_expressions::VIBRATO_EXPRESSION_ID => 0.0,
-+                note_expressions::EXPRESSION_EXPRESSION_ID => 1.0,
-+                _ => 0.5,
-+            },
-             minimum: 0.0,
-             maximum: 1.0,
-             stepCount: 0,
 --- /dev/null
 +++ b/tests/note_expressions.rs
-@@ -0,0 +1,546 @@
+@@ -0,0 +1,547 @@
 +//! Native expression conversion through actual wrapper code and the CLAP entry point.
 +#[path = "../src/wrapper/vst3/note_expressions.rs"]
 +mod vst3_expressions;
@@ -1211,6 +1070,7 @@
 +    version::CLAP_VERSION,
 +};
 +use nice_plug::prelude::*;
++use nice_plug::midi::{Channel, Key, VoiceID};
 +use std::{
 +    ffi::{c_char, c_void},
 +    num::NonZeroU32,
@@ -1279,7 +1139,7 @@
 +            if let Some(value) = value {
 +                buffer.as_slice()[0][event.timing() as usize] = value;
 +            }
-+            context.send_event(event);
++            let _ = context.try_send_event(event);
 +        }
 +        ProcessStatus::Normal
 +    }
@@ -1653,37 +1513,37 @@
 +    let cases = [
 +        NoteEvent::PolyTuning {
 +            timing: 19,
-+            voice_id: Some(42),
-+            channel: 2,
-+            note: 60,
++            voice_id: VoiceID::ID(42),
++            channel: Channel::Number(2),
++            key: Key::Number(60),
 +            tuning: 7.5,
 +        },
 +        NoteEvent::PolyVolume {
 +            timing: 19,
-+            voice_id: Some(42),
-+            channel: 2,
-+            note: 60,
++            voice_id: VoiceID::ID(42),
++            channel: Channel::Number(2),
++            key: Key::Number(60),
 +            gain: 2.0,
 +        },
 +        NoteEvent::PolyPan {
 +            timing: 19,
-+            voice_id: Some(42),
-+            channel: 2,
-+            note: 60,
++            voice_id: VoiceID::ID(42),
++            channel: Channel::Number(2),
++            key: Key::Number(60),
 +            pan: -0.5,
 +        },
 +        NoteEvent::PolyBrightness {
 +            timing: 19,
-+            voice_id: Some(42),
-+            channel: 2,
-+            note: 60,
++            voice_id: VoiceID::ID(42),
++            channel: Channel::Number(2),
++            key: Key::Number(60),
 +            brightness: 0.75,
 +        },
 +        NoteEvent::PolyExpression {
 +            timing: 19,
-+            voice_id: Some(42),
-+            channel: 2,
-+            note: 60,
++            voice_id: VoiceID::ID(42),
++            channel: Channel::Number(2),
++            key: Key::Number(60),
 +            expression: 0.25,
 +        },
 +    ];
@@ -1703,9 +1563,9 @@
 +    assert!(matches!(
 +        controller.translate_event::<()>(19, &vst_expression(0, TUNING_EXPRESSION_ID, 0.5)),
 +        Some(NoteEvent::PolyTuning {
-+            voice_id: Some(0),
-+            channel: 255,
-+            note: 255,
++            voice_id: VoiceID::ID(0),
++            channel: Channel::Wildcard,
++            key: Key::Wildcard,
 +            timing: 19,
 +            tuning: 0.0
 +        })
@@ -1714,8 +1574,8 @@
 +    assert!(matches!(
 +        controller.translate_event::<()>(0, &vst_expression(299, PAN_EXPRESSION_ID, 0.5)),
 +        Some(NoteEvent::PolyPan {
-+            channel: 2,
-+            note: 72,
++            channel: Channel::Number(2),
++            key: Key::Number(72),
 +            ..
 +        })
 +    ));

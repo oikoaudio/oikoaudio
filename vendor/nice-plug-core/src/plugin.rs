@@ -4,8 +4,11 @@
 use std::sync::Arc;
 
 mod state;
-mod track_info;
 pub use state::*;
+
+#[cfg(feature = "editor")]
+mod track_info;
+#[cfg(feature = "editor")]
 pub use track_info::*;
 
 use crate::{
@@ -108,22 +111,38 @@ pub trait Plugin: Default + Send + 'static {
 
     /// Whether the plugin accepts note events, and what which events it wants to receive. If this
     /// is set to [`MidiConfig::None`], then the plugin won't receive any note events.
+    ///
+    /// Defaults to [`MidiConfig::None`]
     const MIDI_INPUT: MidiConfig = MidiConfig::None;
     /// Whether the plugin can output note events. If this is set to [`MidiConfig::None`], then the
     /// plugin won't have a note output port. When this is set to another value, then in most hosts
     /// the plugin will consume all note and MIDI CC input. If you don't want that, then you will
     /// need to forward those events yourself.
+    ///
+    /// Defaults to [`MidiConfig::None`]
     const MIDI_OUTPUT: MidiConfig = MidiConfig::None;
     /// If enabled, the audio processing cycle may be split up into multiple smaller chunks if
     /// parameter values change occur in the middle of the buffer. Depending on the host these
     /// blocks may be as small as a single sample. Bitwig Studio sends at most one parameter change
     /// every 64 samples.
+    ///
+    /// Defaults to `false`
     const SAMPLE_ACCURATE_AUTOMATION: bool = false;
 
     /// If this is set to true, then the plugin will report itself as having a hard realtime
     /// processing requirement when the host asks for it. Supported hosts will never ask the plugin
     /// to do offline processing.
+    ///
+    /// Defaults to `false`
     const HARD_REALTIME_ONLY: bool = false;
+
+    /// The allocated capacity for the process' input event buffer.
+    ///
+    /// This may need to be increased if your plugin has a lot of parameters or expects a lot
+    /// of MIDI events.
+    ///
+    /// Defaults to `1024`
+    const INPUT_EVENT_CAPACITY: usize = 1024;
 
     #[cfg(feature = "editor")]
     type Editor: Editor;
@@ -267,6 +286,12 @@ pub trait Plugin: Default + Send + 'static {
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus;
 
+    /// Called when the host is about to deactivate the plugin or when it is about to send the plugin
+    /// to sleep.
+    ///
+    /// This is currently only used in the CLAP backend.
+    fn stop_processing(&mut self) {}
+
     /// Called when the plugin is deactivated. The host will call
     /// [`activate()`][Self::activate()] again before the plugin resumes processing audio. These
     /// two functions will not be called when the host only temporarily stops processing audio. You
@@ -276,10 +301,6 @@ pub trait Plugin: Default + Send + 'static {
     /// `activate()` may be called more than once before `deactivate()` is called, for instance
     /// when restoring state while the plugin is still activate.
     fn deactivate(&mut self) {}
-
-    /// Called when the host provides track information after [`activate()`][Self::activate()] and after
-    /// changes are made to the track that the plugin is on.
-    fn track_info_updated(&mut self, info: TrackInfo) {}
 
     /// Configure the global logger here.
     ///

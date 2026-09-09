@@ -11,9 +11,9 @@
 
 [package]
 edition = "2024"
-rust-version = "1.87"
+rust-version = "1.88"
 name = "nice-plug-core"
-version = "0.3.0"
+version = "0.4.0"
 authors = [
     "Robbert van der Helm <mail@robbertvanderhelm.nl>",
     "Billy Messenger <billydm@noreply.codeberg.org>",
@@ -90,6 +90,9 @@ features = ["derive"]
 
 [dependencies.serde_json]
 version = "1.0"
+
+[dependencies.thiserror]
+version = "2"
 
 [dependencies.tracing]
 version = "0.1"

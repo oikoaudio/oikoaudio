@@ -66,7 +66,7 @@ impl<const SAMPLE_ACCURATE: bool> Plugin for TimingProbe<SAMPLE_ACCURATE> {
         buffer.as_slice()[0].fill(self.params.value.value());
         buffer.as_slice()[1].fill(context.transport().tempo.unwrap_or(120.0) as f32);
         while let Some(event) = context.next_event() {
-            context.send_event(event);
+            let _ = context.try_send_event(event);
         }
         ProcessStatus::Normal
     }

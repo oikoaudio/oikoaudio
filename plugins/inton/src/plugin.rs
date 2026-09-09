@@ -13,8 +13,9 @@ use inton_core::{
 };
 use nice_plug::context::gui::GuiContext;
 use nice_plug::{params::internals::ParamPtr, plugin::ParamValue, prelude::*};
-use nice_plug_egui::{EguiEditorState, EguiNiceSettings, RepaintNotifier, create_egui_editor};
-use oiko_plugin::HostCoordinateEditor;
+use nice_plug_egui::{
+    EguiEditor, EguiEditorState, EguiNiceSettings, RepaintNotifier, create_egui_editor,
+};
 use std::collections::BTreeMap;
 use std::{
     num::NonZeroU32,
@@ -348,7 +349,7 @@ impl Plugin for IntonPlugin {
     const MIDI_OUTPUT: MidiConfig = MidiConfig::MidiCCs;
     const SAMPLE_ACCURATE_AUTOMATION: bool = true;
 
-    type Editor = HostCoordinateEditor<Editor>;
+    type Editor = EguiEditor<Editor>;
     type SysExMessage = ();
     type BackgroundTask = ();
 
@@ -388,15 +389,13 @@ impl Plugin for IntonPlugin {
         let scale = ViewPreferences::nearest_scale(view.scale) as f32;
         self.editor_state =
             oiko_plugin::editor_state(egui::vec2(view.width() as f32, view.height() as f32), scale);
-        let state = self.editor_state.clone();
         let host = HostRef::connected(self.shared.clone(), self.params.clone());
         create_egui_editor(
-            state.clone(),
+            self.editor_state.clone(),
             RepaintNotifier::new(),
             EguiNiceSettings::new().with_tile(Self::NAME),
             Editor::new(self.shared.clone(), host),
         )
-        .map(|editor| HostCoordinateEditor::new(editor, state))
     }
 
     fn process(
@@ -406,7 +405,7 @@ impl Plugin for IntonPlugin {
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
         while let Some(event) = context.next_event() {
-            context.send_event(event);
+            let _ = context.try_send_event(event);
         }
         ProcessStatus::Normal
     }

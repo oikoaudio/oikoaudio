@@ -1,4 +1,3 @@
-use super::super::scale_editor::DraftHistory;
 use super::*;
 
 #[test]

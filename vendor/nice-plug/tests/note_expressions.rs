@@ -12,6 +12,7 @@ use clap_sys::{
     version::CLAP_VERSION,
 };
 use nice_plug::prelude::*;
+use nice_plug::midi::{Channel, Key, VoiceID};
 use std::{
     ffi::{c_char, c_void},
     num::NonZeroU32,
@@ -80,7 +81,7 @@ impl<const SAMPLE_ACCURATE: bool> Plugin for TimingProbe<SAMPLE_ACCURATE> {
             if let Some(value) = value {
                 buffer.as_slice()[0][event.timing() as usize] = value;
             }
-            context.send_event(event);
+            let _ = context.try_send_event(event);
         }
         ProcessStatus::Normal
     }
@@ -454,37 +455,37 @@ fn vst3_round_trips_distinct_expression_types_and_units() {
     let cases = [
         NoteEvent::PolyTuning {
             timing: 19,
-            voice_id: Some(42),
-            channel: 2,
-            note: 60,
+            voice_id: VoiceID::ID(42),
+            channel: Channel::Number(2),
+            key: Key::Number(60),
             tuning: 7.5,
         },
         NoteEvent::PolyVolume {
             timing: 19,
-            voice_id: Some(42),
-            channel: 2,
-            note: 60,
+            voice_id: VoiceID::ID(42),
+            channel: Channel::Number(2),
+            key: Key::Number(60),
             gain: 2.0,
         },
         NoteEvent::PolyPan {
             timing: 19,
-            voice_id: Some(42),
-            channel: 2,
-            note: 60,
+            voice_id: VoiceID::ID(42),
+            channel: Channel::Number(2),
+            key: Key::Number(60),
             pan: -0.5,
         },
         NoteEvent::PolyBrightness {
             timing: 19,
-            voice_id: Some(42),
-            channel: 2,
-            note: 60,
+            voice_id: VoiceID::ID(42),
+            channel: Channel::Number(2),
+            key: Key::Number(60),
             brightness: 0.75,
         },
         NoteEvent::PolyExpression {
             timing: 19,
-            voice_id: Some(42),
-            channel: 2,
-            note: 60,
+            voice_id: VoiceID::ID(42),
+            channel: Channel::Number(2),
+            key: Key::Number(60),
             expression: 0.25,
         },
     ];
@@ -504,9 +505,9 @@ fn vst3_long_held_ids_survive_cache_wrap_and_reused_ids_use_latest_address() {
     assert!(matches!(
         controller.translate_event::<()>(19, &vst_expression(0, TUNING_EXPRESSION_ID, 0.5)),
         Some(NoteEvent::PolyTuning {
-            voice_id: Some(0),
-            channel: 255,
-            note: 255,
+            voice_id: VoiceID::ID(0),
+            channel: Channel::Wildcard,
+            key: Key::Wildcard,
             timing: 19,
             tuning: 0.0
         })
@@ -515,8 +516,8 @@ fn vst3_long_held_ids_survive_cache_wrap_and_reused_ids_use_latest_address() {
     assert!(matches!(
         controller.translate_event::<()>(0, &vst_expression(299, PAN_EXPRESSION_ID, 0.5)),
         Some(NoteEvent::PolyPan {
-            channel: 2,
-            note: 72,
+            channel: Channel::Number(2),
+            key: Key::Number(72),
             ..
         })
     ));

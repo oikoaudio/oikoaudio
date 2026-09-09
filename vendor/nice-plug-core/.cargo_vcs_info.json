@@ -1,6 +1,6 @@
 {
   "git": {
-    "sha1": "4450436d9f914aec780d17cea19f18d90fa863c9"
+    "sha1": "ce793d8275aebf7589e35fb5fc1e1e3e6a016940"
   },
   "path_in_vcs": "crates/nice-plug-core"
 }

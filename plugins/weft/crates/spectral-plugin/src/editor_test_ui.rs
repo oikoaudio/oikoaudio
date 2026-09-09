@@ -1,3 +1,4 @@
+use super::rendering::frequency_to_x;
 use super::*;
 use nice_plug::context::{PluginApi, gui::GuiContextInner};
 use nice_plug::params::internals::ParamPtr;
@@ -59,6 +60,8 @@ fn mts_ruler_selects_tuned_keys_and_restores_keyboard_without_losing_notes() {
     }
 }
 impl GuiContextInner for TestHost {
+    fn request_restart(&self) {}
+
     fn plugin_api(&self) -> PluginApi {
         PluginApi::Clap
     }

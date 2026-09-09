@@ -3,12 +3,13 @@ mod display_data;
 mod editor;
 
 use editor::{EDITOR_HEIGHT, EDITOR_WIDTH, WowEditor, closest_ui_scale};
-use oiko_plugin::HostCoordinateEditor;
 type UiScaleState = oiko_plugin::UiScaleState<100>;
 #[cfg(test)]
 use nice_plug::params::persist::PersistentField;
 use nice_plug::prelude::*;
-use nice_plug_egui::{EguiEditorState, EguiNiceSettings, RepaintNotifier, create_egui_editor};
+use nice_plug_egui::{
+    EguiEditor, EguiEditorState, EguiNiceSettings, RepaintNotifier, create_egui_editor,
+};
 use oiko_dsp::fractional_delay::{QualityMode, QualityVariableDelayF32, SincBankF32};
 use std::{
     num::NonZeroU32,
@@ -243,7 +244,7 @@ impl Plugin for WowPlugin {
     const MIDI_INPUT: MidiConfig = MidiConfig::None;
     const SAMPLE_ACCURATE_AUTOMATION: bool = true;
 
-    type Editor = HostCoordinateEditor<WowEditor>;
+    type Editor = EguiEditor<WowEditor>;
     type SysExMessage = ();
     type BackgroundTask = ();
 
@@ -259,14 +260,12 @@ impl Plugin for WowPlugin {
         self.params.ui_scale.set(interface_scale);
         self.editor_state =
             oiko_plugin::editor_state(egui::vec2(EDITOR_WIDTH, EDITOR_HEIGHT), interface_scale);
-        let editor_state = self.editor_state.clone();
         create_egui_editor(
             self.editor_state.clone(),
             RepaintNotifier::new(),
             EguiNiceSettings::new().with_tile(Self::NAME),
             WowEditor::new(self.params.clone(), self.display.clone()),
         )
-        .map(|editor| HostCoordinateEditor::new(editor, editor_state))
     }
 
     fn activate(

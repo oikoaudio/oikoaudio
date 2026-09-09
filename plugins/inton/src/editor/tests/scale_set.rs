@@ -761,7 +761,7 @@ fn empty_unselected_revealed_slot_can_be_dismissed() {
     frame(&mut e, &ctx, &mut time, vec![]);
 
     assert!(!e.set.revealed.contains(&4));
-    assert!(!e.set.rows(&shared.snapshot(), 0).contains(&4));
+    assert!(!e.set.rows(&e.shared.snapshot(), 0).contains(&4));
 }
 
 #[test]

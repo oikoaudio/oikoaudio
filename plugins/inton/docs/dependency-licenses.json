@@ -1180,20 +1180,20 @@
   },
   {
     "name": "nice-plug",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "license": "ISC",
     "repository": "https://codeberg.org/RustAudio/nice-plug",
     "notices": [
-      "licenses/nice-plug-0.3.0/LICENSE"
+      "licenses/nice-plug-0.4.0/LICENSE"
     ]
   },
   {
     "name": "nice-plug-core",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "license": "ISC",
     "repository": "https://codeberg.org/RustAudio/nice-plug",
     "notices": [
-      "licenses/nice-plug-core-0.3.0/LICENSE"
+      "licenses/nice-plug-core-0.4.0/LICENSE"
     ]
   },
   {
@@ -1207,11 +1207,11 @@
   },
   {
     "name": "nice-plug-egui",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "license": "ISC",
     "repository": "https://codeberg.org/RustAudio/nice-plug",
     "notices": [
-      "licenses/nice-plug-egui-0.4.0/LICENSE"
+      "licenses/nice-plug-egui-0.5.0/LICENSE"
     ]
   },
   {
@@ -2146,6 +2146,15 @@
     "repository": "https://github.com/tokio-rs/tracing",
     "notices": [
       "licenses/tracing-subscriber-0.3.23/LICENSE"
+    ]
+  },
+  {
+    "name": "try-lock",
+    "version": "0.2.5",
+    "license": "MIT",
+    "repository": "https://github.com/seanmonstar/try-lock",
+    "notices": [
+      "licenses/try-lock-0.2.5/LICENSE"
     ]
   },
   {

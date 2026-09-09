@@ -3,7 +3,6 @@ mod curve;
 mod parameters;
 use curve::transform_curve;
 use display_data::{ANALYZER_POINTS, AnalysisDisplay, display_max_frequency};
-use oiko_dsp::db_to_gain;
 use parameters::{
     COARSE_FFT_SIZE, DEFAULT_FFT_SIZE, FftQuality, MAX_FFT_SIZE, MAX_FREE_MOTION_RATE_HZ,
     MIN_FFT_SIZE, MotionDirection, ROUGH_FFT_SIZE, SpectralParams,
@@ -24,9 +23,12 @@ mod editor;
 mod mts_client;
 
 use editor::{EDITOR_HEIGHT, EDITOR_WIDTH, SpectralEditor, closest_ui_scale};
+use nice_plug::midi::{Channel, Key, VoiceID};
 use nice_plug::prelude::*;
-use nice_plug_egui::{EguiEditorState, EguiNiceSettings, RepaintNotifier, create_egui_editor};
-use oiko_plugin::HostCoordinateEditor;
+use nice_plug_egui::{
+    EguiEditor, EguiEditorState, EguiNiceSettings, RepaintNotifier, create_egui_editor,
+};
+use oiko_dsp::db_to_gain;
 use realfft::num_complex::Complex32;
 use realfft::{ComplexToReal, RealFftPlanner, RealToComplex};
 use spectral_dsp::{
@@ -255,7 +257,7 @@ impl Plugin for SpectralPlugin {
     const MIDI_INPUT: MidiConfig = MidiConfig::MidiCCs;
     const SAMPLE_ACCURATE_AUTOMATION: bool = true;
 
-    type Editor = HostCoordinateEditor<SpectralEditor>;
+    type Editor = EguiEditor<SpectralEditor>;
     type SysExMessage = ();
     type BackgroundTask = ();
 
@@ -279,14 +281,12 @@ impl Plugin for SpectralPlugin {
         // CLAP host window size and egui-baseview's zoomed backing size.
         self.editor_state =
             oiko_plugin::editor_state(egui::vec2(EDITOR_WIDTH, EDITOR_HEIGHT), interface_scale);
-        let editor_state = self.editor_state.clone();
         create_egui_editor(
             self.editor_state.clone(),
             RepaintNotifier::new(),
             EguiNiceSettings::new().with_tile(Self::NAME),
             SpectralEditor::new(self.params.clone(), self.analysis_display.clone()),
         )
-        .map(|editor| HostCoordinateEditor::new(editor, editor_state))
     }
 
     fn activate(
@@ -790,11 +790,11 @@ impl SpectralPlugin {
 
     fn flush_terminated(&mut self, context: &mut impl ProcessContext<Self>, timing: u32) {
         for voice in &self.terminated[..self.terminated_count] {
-            context.send_event(NoteEvent::VoiceTerminated {
+            let _ = context.try_send_event(NoteEvent::VoiceTerminated {
                 timing,
-                voice_id: voice.voice_id,
-                channel: voice.channel,
-                note: voice.note,
+                voice_id: voice.voice_id.map_or(VoiceID::Wildcard, VoiceID::ID),
+                channel: Channel::Number(voice.channel),
+                key: Key::Number(voice.note),
             });
         }
         self.terminated_count = 0;
@@ -855,34 +855,34 @@ impl SpectralPlugin {
         match event {
             NoteEvent::NoteOn {
                 voice_id,
-                channel,
-                note,
+                channel: Channel::Number(channel),
+                key: Key::Number(note),
                 velocity,
                 ..
             } if channel < 16 && note < 128 && velocity.is_finite() => {
-                self.start_voice(voice_id, channel, note, velocity);
+                self.start_voice(voice_id.id(), channel, note, velocity);
             }
             NoteEvent::NoteOff {
                 voice_id,
                 channel,
-                note,
+                key,
                 ..
-            } => self.release_voice(voice_id, channel, note),
+            } => self.release_voice(voice_id, channel, key),
             NoteEvent::Choke {
                 voice_id,
                 channel,
-                note,
+                key,
                 ..
-            } => self.choke_voice(voice_id, channel, note),
+            } => self.choke_voice(voice_id, channel, key),
             NoteEvent::PolyTuning {
                 voice_id,
                 channel,
-                note,
+                key,
                 tuning,
                 ..
             } => {
                 for voice in &mut self.voices {
-                    if voice_matches(voice, voice_id, channel, note) && tuning.is_finite() {
+                    if voice_matches(voice, voice_id, channel, key) && tuning.is_finite() {
                         voice.tuning_semitones = tuning.clamp(-120.0, 120.0);
                     }
                 }
@@ -890,12 +890,12 @@ impl SpectralPlugin {
             NoteEvent::PolyPressure {
                 voice_id,
                 channel,
-                note,
+                key,
                 pressure,
                 ..
             } => {
                 for voice in &mut self.voices {
-                    if voice_matches(voice, voice_id, channel, note) && pressure.is_finite() {
+                    if voice_matches(voice, voice_id, channel, key) && pressure.is_finite() {
                         voice.native_pressure = Some(pressure.clamp(0.0, 1.0));
                     }
                 }
@@ -903,12 +903,12 @@ impl SpectralPlugin {
             NoteEvent::PolyVolume {
                 voice_id,
                 channel,
-                note,
+                key,
                 gain,
                 ..
             } => {
                 for voice in &mut self.voices {
-                    if voice_matches(voice, voice_id, channel, note) && gain.is_finite() {
+                    if voice_matches(voice, voice_id, channel, key) && gain.is_finite() {
                         voice.volume_gain = gain.clamp(0.0, 4.0);
                     }
                 }
@@ -916,12 +916,12 @@ impl SpectralPlugin {
             NoteEvent::PolyVibrato {
                 voice_id,
                 channel,
-                note,
+                key,
                 vibrato,
                 ..
             } => {
                 for voice in &mut self.voices {
-                    if voice_matches(voice, voice_id, channel, note) && vibrato.is_finite() {
+                    if voice_matches(voice, voice_id, channel, key) && vibrato.is_finite() {
                         voice.vibrato = vibrato.clamp(0.0, 1.0);
                     }
                 }
@@ -929,12 +929,12 @@ impl SpectralPlugin {
             NoteEvent::PolyBrightness {
                 voice_id,
                 channel,
-                note,
+                key,
                 brightness,
                 ..
             } => {
                 for voice in &mut self.voices {
-                    if voice_matches(voice, voice_id, channel, note) && brightness.is_finite() {
+                    if voice_matches(voice, voice_id, channel, key) && brightness.is_finite() {
                         voice.native_timbre = Some(brightness.clamp(0.0, 1.0));
                     }
                 }
@@ -942,12 +942,12 @@ impl SpectralPlugin {
             NoteEvent::PolyExpression {
                 voice_id,
                 channel,
-                note,
+                key,
                 expression,
                 ..
             } => {
                 for voice in &mut self.voices {
-                    if voice_matches(voice, voice_id, channel, note) && expression.is_finite() {
+                    if voice_matches(voice, voice_id, channel, key) && expression.is_finite() {
                         voice.expression_amount = expression.clamp(0.0, 1.0);
                     }
                 }
@@ -955,13 +955,13 @@ impl SpectralPlugin {
             NoteEvent::PolyPan {
                 voice_id,
                 channel,
-                note,
+                key,
                 pan,
                 ..
             } => {
                 if pan.is_finite() {
                     for voice in &mut self.voices {
-                        if voice_matches(voice, voice_id, channel, note) {
+                        if voice_matches(voice, voice_id, channel, key) {
                             voice.pan = pan.clamp(-1.0, 1.0);
                         }
                     }
@@ -987,9 +987,17 @@ impl SpectralPlugin {
                                 || self.midi_expression.master_for(affected) == Some(channel)
                             {
                                 if cc == 120 {
-                                    self.choke_voice(None, affected, u8::MAX);
+                                    self.choke_voice(
+                                        VoiceID::Wildcard,
+                                        Channel::Number(affected),
+                                        Key::Wildcard,
+                                    );
                                 } else {
-                                    self.release_voice(None, affected, u8::MAX);
+                                    self.release_voice(
+                                        VoiceID::Wildcard,
+                                        Channel::Number(affected),
+                                        Key::Wildcard,
+                                    );
                                 }
                             }
                         }
@@ -1009,7 +1017,11 @@ impl SpectralPlugin {
                 }
                 for (affected, old_zone) in old_zones.into_iter().enumerate() {
                     if old_zone != self.midi_expression.zone_for(affected as u8) {
-                        self.choke_voice(None, affected as u8, u8::MAX);
+                        self.choke_voice(
+                            VoiceID::Wildcard,
+                            Channel::Number(affected as u8),
+                            Key::Wildcard,
+                        );
                         self.channel_sustain[affected] = false;
                     }
                 }
@@ -1054,9 +1066,9 @@ impl SpectralPlugin {
         };
     }
 
-    fn release_voice(&mut self, voice_id: Option<i32>, channel: u8, note: u8) {
+    fn release_voice(&mut self, voice_id: VoiceID, channel: Channel, key: Key) {
         for voice in &mut self.voices {
-            if voice.held && voice_matches(voice, voice_id, channel, note) {
+            if voice.held && voice_matches(voice, voice_id, channel, key) {
                 voice.held = false;
                 voice.sustained = self.channel_sustain[voice.channel as usize];
             }
@@ -1078,9 +1090,9 @@ impl SpectralPlugin {
         }
     }
 
-    fn choke_voice(&mut self, voice_id: Option<i32>, channel: u8, note: u8) {
+    fn choke_voice(&mut self, voice_id: VoiceID, channel: Channel, key: Key) {
         for (index, voice) in self.voices.iter_mut().enumerate() {
-            if voice_matches(voice, voice_id, channel, note) {
+            if voice_matches(voice, voice_id, channel, key) {
                 self.terminated[self.terminated_count] = *voice;
                 self.terminated_count += 1;
                 self.particles.engine.retire_source(index);
@@ -1109,59 +1121,59 @@ impl SpectralPlugin {
     }
 }
 
-fn expression_address(event: NoteEvent<()>) -> Option<(Option<i32>, u8, u8)> {
+fn expression_address(event: NoteEvent<()>) -> Option<(VoiceID, Channel, Key)> {
     match event {
         NoteEvent::PolyTuning {
             voice_id,
             channel,
-            note,
+            key,
             ..
         }
         | NoteEvent::PolyVolume {
             voice_id,
             channel,
-            note,
+            key,
             ..
         }
         | NoteEvent::PolyPan {
             voice_id,
             channel,
-            note,
+            key,
             ..
         }
         | NoteEvent::PolyPressure {
             voice_id,
             channel,
-            note,
+            key,
             ..
         }
         | NoteEvent::PolyBrightness {
             voice_id,
             channel,
-            note,
+            key,
             ..
         }
         | NoteEvent::PolyExpression {
             voice_id,
             channel,
-            note,
+            key,
             ..
         }
         | NoteEvent::PolyVibrato {
             voice_id,
             channel,
-            note,
+            key,
             ..
-        } => Some((voice_id, channel, note)),
+        } => Some((voice_id, channel, key)),
         _ => None,
     }
 }
 
-fn voice_matches(voice: &VoiceState, voice_id: Option<i32>, channel: u8, note: u8) -> bool {
+fn voice_matches(voice: &VoiceState, voice_id: VoiceID, channel: Channel, key: Key) -> bool {
     voice.occupied
-        && (channel == u8::MAX || voice.channel == channel)
-        && (note == u8::MAX || voice.note == note)
-        && voice_id.is_none_or(|id| voice.voice_id == Some(id))
+        && (channel.is_wildcard() || channel == Channel::Number(voice.channel))
+        && (key.is_wildcard() || key == Key::Number(voice.note))
+        && (voice_id.is_wildcard() || voice_id.id() == voice.voice_id)
 }
 
 fn advance_voices(

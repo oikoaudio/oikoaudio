@@ -4,14 +4,14 @@
 use crate::curve::CURVE_TRANSFORM_STORAGE_LIMIT_DB;
 use crate::parameters::SpectralParams;
 use nice_plug::params::persist::PersistentField;
-use nice_plug::prelude::{Params, PluginState};
+use nice_plug::prelude::{Param, Params, PluginState};
 use spectral_dsp::{MANUAL_CURVE_MUTE_DB, MANUAL_MASK_POINTS, MIDI_NOTES};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicU32, Ordering},
 };
 
-pub(crate) type UiScaleState = oiko_plugin::UiScaleState<125>;
+pub(crate) type UiScaleState = oiko_plugin::UiScaleState<100>;
 use nice_plug::params::{internals::ParamPtr, persist::deserialize_field};
 use nice_plug::plugin::ParamValue;
 

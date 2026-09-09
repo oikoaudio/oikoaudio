@@ -3,11 +3,14 @@ use super::rendering::{Icon, small_icon};
 #[cfg(test)]
 use super::trace;
 use super::{Command, Editor, ScaleDrag};
-use crate::editor_model::{AssignmentIntent, BrowserTab, Inspection, Overlay, ViewPreferences};
+#[cfg(test)]
+use crate::editor_model::Inspection;
+use crate::editor_model::{AssignmentIntent, BrowserTab, Overlay, ViewPreferences};
 use crate::editor_theme::{Palette, TEXT_SMALL, compact_rows};
 use crate::library::Library;
 use egui::{FontId, RichText, ScrollArea, Sense, Stroke, vec2};
 use egui::{Vec2, pos2};
+#[cfg(test)]
 use inton_core::engine::Parameter;
 use std::sync::atomic::Ordering::SeqCst;
 use std::time::Duration;

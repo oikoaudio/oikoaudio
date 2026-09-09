@@ -1,7 +1,5 @@
 //! The shared NicePlug adapter. DSP crates must never depend on this crate.
-pub mod host_coordinates;
 pub mod scale_state;
-pub use host_coordinates::{HostCoordinateEditor, HostCoordinateHandle};
 pub use scale_state::UiScaleState;
 
 /// Create persisted editor geometry with one platform convention for all products.

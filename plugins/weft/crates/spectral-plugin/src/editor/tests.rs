@@ -1,5 +1,5 @@
 use super::*;
-use super::{controls::*, curve::*, history::*, rendering::*};
+use super::{curve::*, history::*, rendering::*};
 use crate::display_data::display_max_frequency;
 use crate::parameters::SpectralParams;
 use crate::state::CurveState;

@@ -7,25 +7,44 @@
 +
 +#[cfg(test)]
 +mod regression_tests;
---- a/src/plugin.rs
-+++ b/src/plugin.rs
-@@ -195,6 +195,13 @@
-     /// This is an advanced feature that the vast majority of plugins won't need to implement.
-     fn filter_state(state: &mut PluginState) {}
+--- a/src/params/boolean.rs
++++ b/src/params/boolean.rs
+@@ -175,21 +175,25 @@
+         // REAPER spams automation events with the same value. This prevents callbacks from firing
+         // multiple times. This can be problematic when they're used to trigger expensive
+         // computations when a parameter changes.
++        // The base value must change even when modulation or quantization keeps
++        // the effective value unchanged. Only the effective-value callback is deduplicated.
++        self.normalized_value
++            .store(normalized_value, Ordering::Relaxed);
++        let base_changed = self
++            .unmodulated_value
++            .swap(unmodulated_value, Ordering::Relaxed)
++            != unmodulated_value;
++        self.unmodulated_normalized_value
++            .store(unmodulated_normalized_value, Ordering::Relaxed);
+         let old_value = self.value.swap(value, Ordering::Relaxed);
+         if value != old_value {
+-            self.normalized_value
+-                .store(normalized_value, Ordering::Relaxed);
+-            self.unmodulated_value
+-                .store(unmodulated_value, Ordering::Relaxed);
+-            self.unmodulated_normalized_value
+-                .store(unmodulated_normalized_value, Ordering::Relaxed);
+             if let Some(f) = &self.value_changed {
+                 f(value);
+             }
  
-+    /// Validate a migrated state before the wrapper changes parameters or persisted fields.
-+    /// Return an error to reject the complete load without changing the live state.
-+    /// This runs after `filter_state` for both host and plug-in initiated loads.
-+    fn validate_state(state: &PluginState) -> Result<(), String> {
-+        Ok(())
-+    }
-+
-     //
-     // The following functions follow the lifetime of the plugin.
-     //
+             true
+         } else {
+-            false
++            base_changed
+         }
+     }
+ 
 --- a/src/params/float.rs
 +++ b/src/params/float.rs
-@@ -223,21 +223,25 @@
+@@ -209,21 +209,25 @@
          // REAPER spams automation events with the same value. This prevents callbacks from firing
          // multiple times. This can be problematic when they're used to trigger expensive
          // computations when a parameter changes.
@@ -60,7 +79,7 @@
  
 --- a/src/params/integer.rs
 +++ b/src/params/integer.rs
-@@ -203,21 +203,25 @@
+@@ -189,21 +189,25 @@
          // REAPER spams automation events with the same value. This prevents callbacks from firing
          // multiple times. This can be problematic when they're used to trigger expensive
          // computations when a parameter changes.
@@ -93,41 +112,22 @@
          }
      }
  
---- a/src/params/boolean.rs
-+++ b/src/params/boolean.rs
-@@ -183,21 +183,25 @@
-         // REAPER spams automation events with the same value. This prevents callbacks from firing
-         // multiple times. This can be problematic when they're used to trigger expensive
-         // computations when a parameter changes.
-+        // The base value must change even when modulation or quantization keeps
-+        // the effective value unchanged. Only the effective-value callback is deduplicated.
-+        self.normalized_value
-+            .store(normalized_value, Ordering::Relaxed);
-+        let base_changed = self
-+            .unmodulated_value
-+            .swap(unmodulated_value, Ordering::Relaxed)
-+            != unmodulated_value;
-+        self.unmodulated_normalized_value
-+            .store(unmodulated_normalized_value, Ordering::Relaxed);
-         let old_value = self.value.swap(value, Ordering::Relaxed);
-         if value != old_value {
--            self.normalized_value
--                .store(normalized_value, Ordering::Relaxed);
--            self.unmodulated_value
--                .store(unmodulated_value, Ordering::Relaxed);
--            self.unmodulated_normalized_value
--                .store(unmodulated_normalized_value, Ordering::Relaxed);
-             if let Some(f) = &self.value_changed {
-                 f(value);
-             }
+--- a/src/plugin.rs
++++ b/src/plugin.rs
+@@ -214,6 +214,13 @@
+     /// This is an advanced feature that the vast majority of plugins won't need to implement.
+     fn filter_state(state: &mut PluginState) {}
  
-             true
-         } else {
--            false
-+            base_changed
-         }
-     }
- 
++    /// Validate a migrated state before the wrapper changes parameters or persisted fields.
++    /// Return an error to reject the complete load without changing the live state.
++    /// This runs after `filter_state` for both host and plug-in initiated loads.
++    fn validate_state(state: &PluginState) -> Result<(), String> {
++        Ok(())
++    }
++
+     //
+     // The following functions follow the lifetime of the plugin.
+     //
 --- /dev/null
 +++ b/src/regression_tests.rs
 @@ -0,0 +1,68 @@
@@ -199,24 +199,6 @@
 +        assert!((integer.modulated_normalized_value() - 0.52).abs() < 1e-6);
 +    }
 +}
---- a/src/midi.rs
-+++ b/src/midi.rs
-@@ -36,9 +36,12 @@
-     MidiCCs,
- }
- 
--// FIXME: Like the voice ID, channel and note number can also be omitted in CLAP. And instead of an
--//        Option, maybe this should use a dedicated type to more clearly indicate that missing
--//        values should be treated as wildcards.
-+/// Wildcard channel/key in note-off, choke and polyphonic expression events.
-+/// CLAP's signed -1 address is preserved as this sentinel without changing the
-+/// existing event layout. Match every specified address component; an omitted
-+/// voice ID also matches all IDs. Note-on addresses must always be concrete.
-+/// VST3 expressions can carry only an ID when no channel/key mapping is retained.
-+pub const NOTE_ADDRESS_WILDCARD: u8 = u8::MAX;
- 
- /// Event for (incoming) notes. The set of supported note events depends on the value of
- /// [`Plugin::MIDI_INPUT`. Also check out the [`util`][crate::util] module for convenient conversion
 --- a/src/util.rs
 +++ b/src/util.rs
 @@ -5,7 +5,7 @@

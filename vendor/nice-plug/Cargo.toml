@@ -11,9 +11,9 @@
 
 [package]
 edition = "2024"
-rust-version = "1.87"
+rust-version = "1.88"
 name = "nice-plug"
-version = "0.3.0"
+version = "0.4.0"
 authors = [
     "Robbert van der Helm <mail@robbertvanderhelm.nl>",
     "Billy Messenger <billydm@noreply.codeberg.org>",
@@ -65,6 +65,10 @@ standalone = [
     "dep:audioadapter-buffers",
     "dep:ctrlc",
 ]
+standalone-asio = [
+    "standalone",
+    "cpal/asio",
+]
 tracing-subscriber = ["dep:tracing-subscriber"]
 unsafe_flush_denormals = []
 vst3 = [
@@ -76,18 +80,6 @@ zstd = ["dep:zstd"]
 [lib]
 name = "nice_plug"
 path = "src/lib.rs"
-
-[[test]]
-name = "clap_state_stream"
-path = "tests/clap_state_stream.rs"
-
-[[test]]
-name = "note_expressions"
-path = "tests/note_expressions.rs"
-
-[[test]]
-name = "clap_event_timing"
-path = "tests/clap_event_timing.rs"
 
 [[test]]
 name = "derive_params"
@@ -110,7 +102,7 @@ version = "1.1"
 version = "0.1"
 
 [dependencies.audioadapter-buffers]
-version = "4.0"
+version = "5.2"
 optional = true
 
 [dependencies.backtrace]
@@ -139,7 +131,7 @@ version = "3.5.2"
 optional = true
 
 [dependencies.fixed-resample]
-version = "0.12.0"
+version = "0.13.0"
 features = ["channel"]
 optional = true
 default-features = false
@@ -169,7 +161,7 @@ optional = true
 version = "0.3.1"
 
 [dependencies.nice-plug-core]
-version = "0.3.0"
+version = "0.4.0"
 default-features = false
 
 [dependencies.nice-plug-derive]
@@ -182,7 +174,7 @@ version = "0.12"
 version = "0.6"
 
 [dependencies.rtrb]
-version = "0.3.3"
+version = "0.4.0"
 optional = true
 
 [dependencies.serde_json]
@@ -204,6 +196,9 @@ features = [
 ]
 optional = true
 default-features = false
+
+[dependencies.try-lock]
+version = "0.2.5"
 
 [dependencies.vst3]
 version = "0.3.0"

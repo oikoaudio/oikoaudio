@@ -1,7 +1,7 @@
 //! Special handling for note expressions, because VST3 makes this a lot more complicated than it
 //! needs to be. We only support the predefined expressions.
 
-use nice_plug_core::midi::{NoteEvent, sysex::SysExMessage};
+use nice_plug_core::midi::{Channel, Key, NoteEvent, VoiceID, sysex::SysExMessage};
 use vst3::Steinberg::Vst::{NoteExpressionValueEvent, NoteOnEvent};
 
 type MidiNote = u8;
@@ -130,7 +130,7 @@ impl NoteExpressionController {
         }
         // The ID remains authoritative even after the bounded address cache wraps.
         // Do not drop expression for a long-held voice just because other notes played.
-        let (note_id, note, channel) = self
+        let (note_id, key, channel) = self
             .note_ids
             .iter()
             .flatten()
@@ -138,52 +138,55 @@ impl NoteExpressionController {
             .copied()
             .unwrap_or((event.noteId, u8::MAX, u8::MAX));
 
+        let channel = if channel == u8::MAX { Channel::Wildcard } else { Channel::Number(channel) };
+        let key = if key == u8::MAX { Key::Wildcard } else { Key::Number(key) };
+
         match event.typeId {
             VOLUME_EXPRESSION_ID => Some(NoteEvent::PolyVolume {
                 timing,
-                voice_id: Some(note_id),
+                voice_id: VoiceID::ID(note_id),
                 channel,
-                note,
+                key,
                 // Because expression values in VST3 are always in the `[0, 1]` range, they added a
                 // 4x scaling factor here to allow the values to go from -infinity to +12 dB
                 gain: event.value as f32 * 4.0,
             }),
             PAN_EXPRESSION_ID => Some(NoteEvent::PolyPan {
                 timing,
-                voice_id: Some(note_id),
+                voice_id: VoiceID::ID(note_id),
                 channel,
-                note,
+                key,
                 // Our panning expressions are symmetrical around 0
                 pan: (event.value as f32 * 2.0) - 1.0,
             }),
             TUNING_EXPRESSION_ID => Some(NoteEvent::PolyTuning {
                 timing,
-                voice_id: Some(note_id),
+                voice_id: VoiceID::ID(note_id),
                 channel,
-                note,
+                key,
                 // This denormalized to the same [-120, 120] range used by CLAP and our expression
                 // events
                 tuning: 240.0 * (event.value as f32 - 0.5),
             }),
             VIBRATO_EXPRESSION_ID => Some(NoteEvent::PolyVibrato {
                 timing,
-                voice_id: Some(note_id),
+                voice_id: VoiceID::ID(note_id),
                 channel,
-                note,
+                key,
                 vibrato: event.value as f32,
             }),
             EXPRESSION_EXPRESSION_ID => Some(NoteEvent::PolyExpression {
                 timing,
-                voice_id: Some(note_id),
+                voice_id: VoiceID::ID(note_id),
                 channel,
-                note,
+                key,
                 expression: event.value as f32,
             }),
             BRIGHTNESS_EXPRESSION_ID => Some(NoteEvent::PolyBrightness {
                 timing,
-                voice_id: Some(note_id),
+                voice_id: VoiceID::ID(note_id),
                 channel,
-                note,
+                key,
                 brightness: event.value as f32,
             }),
             _ => None,

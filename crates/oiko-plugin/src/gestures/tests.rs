@@ -12,6 +12,8 @@ struct TestParams {
 #[derive(Default)]
 struct Host(Mutex<Vec<&'static str>>);
 impl GuiContextInner for Host {
+    fn request_restart(&self) {}
+
     fn plugin_api(&self) -> PluginApi {
         PluginApi::Clap
     }

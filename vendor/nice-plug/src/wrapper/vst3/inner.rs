@@ -12,18 +12,21 @@ use nice_plug_core::editor::{Editor, SpawnedEditor};
 use nice_plug_core::midi::{MidiConfig, PluginNoteEvent};
 use nice_plug_core::params::internals::ParamPtr;
 use nice_plug_core::params::{ParamFlags, Params};
-use nice_plug_core::plugin::{Plugin, PluginState, ProcessStatus, TaskExecutor, TrackInfo};
+#[cfg(feature = "editor")]
+use nice_plug_core::plugin::TrackInfo;
+use nice_plug_core::plugin::{Plugin, PluginState, ProcessStatus, TaskExecutor};
 use parking_lot::Mutex;
 #[cfg(feature = "editor")]
 use parking_lot::RwLock;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use vst3::ComPtr;
+use try_lock::TryLock;
 #[cfg(feature = "editor")]
 use vst3::ComWrapper;
-use vst3::Steinberg::Vst::{IComponentHandler, IComponentHandlerTrait, RestartFlags_};
+use vst3::Steinberg::Vst::{IComponentHandler, IComponentHandlerTrait, IEventList, RestartFlags_};
 use vst3::Steinberg::{kInvalidArgument, kResultOk, tresult};
+use vst3::{ComPtr, ComRef};
 
 use super::context::{WrapperActivateContext, WrapperProcessContext};
 use super::note_expressions::NoteExpressionController;
@@ -33,7 +36,7 @@ use crate::event_loop::{EventLoop, MainThreadExecutor, OsEventLoop};
 use crate::util::permit_alloc;
 use crate::wrapper::state;
 use crate::wrapper::util::buffer_management::BufferManager;
-use crate::wrapper::util::{hash_param_id, process_wrapper};
+use crate::wrapper::util::hash_param_id;
 use crate::wrapper::vst3::Vst3Plugin;
 #[cfg(feature = "editor")]
 use crate::wrapper::vst3::context::WrapperGuiContext;
@@ -45,7 +48,7 @@ use crate::wrapper::vst3::view::WrapperView;
 /// its own struct.
 pub(crate) struct WrapperInner<P: Vst3Plugin> {
     /// The wrapped plugin instance.
-    pub plugin: Mutex<P>,
+    pub plugin: TryLock<P>,
     /// The plugin's background task executor closure.
     pub task_executor: Mutex<TaskExecutor<P>>,
     /// The plugin's parameters. These are fetched once during initialization. That way the
@@ -103,6 +106,7 @@ pub(crate) struct WrapperInner<P: Vst3Plugin> {
     /// The most recently reported track information. Hosts may send partial updates (e.g.
     /// Ableton), so this is used to merge successive [`IInfoListener::setChannelContextInfos()`]
     /// calls.
+    #[cfg(feature = "editor")]
     pub current_track_info: AtomicRefCell<TrackInfo>,
 
     /// The last process status returned by the plugin. This is used for tail handling.
@@ -120,10 +124,7 @@ pub(crate) struct WrapperInner<P: Vst3Plugin> {
     /// NOTE: Because with VST3 MIDI CC messages are sent as parameter changes and VST3 does not
     ///       interleave parameter changes and note events, this queue has to be sorted when
     ///       creating the process context
-    pub input_events: AtomicRefCell<VecDeque<PluginNoteEvent<P>>>,
-    /// Stores any events the plugin has output during the current processing cycle, analogous to
-    /// `input_events`.
-    pub output_events: AtomicRefCell<VecDeque<PluginNoteEvent<P>>>,
+    pub input_note_events: AtomicRefCell<VecDeque<PluginNoteEvent<P>>>,
     /// VST3 has several useful predefined note expressions, but for some reason they are the only
     /// note event type that don't have MIDI note ID and channel fields. So we need to keep track of
     /// the most recent VST3 note IDs we've seen, and then map those back to MIDI note IDs and
@@ -222,6 +223,16 @@ pub enum ProcessEvent<P: Plugin> {
     NoteEvent(PluginNoteEvent<P>),
 }
 
+impl<P: Plugin> ProcessEvent<P> {
+    #[inline]
+    pub(crate) fn timing(&self) -> u32 {
+        match self {
+            ProcessEvent::ParameterChange { timing, .. } => *timing,
+            ProcessEvent::NoteEvent(event) => event.timing(),
+        }
+    }
+}
+
 impl<P: Vst3Plugin> WrapperInner<P> {
     #[allow(unused_unsafe)]
     pub fn new() -> Arc<Self> {
@@ -311,8 +322,14 @@ impl<P: Vst3Plugin> WrapperInner<P> {
             .map(|(_, hash, ptr, _)| (ptr, hash))
             .collect();
 
+        let input_note_events = if P::MIDI_INPUT == MidiConfig::None {
+            AtomicRefCell::new(VecDeque::new())
+        } else {
+            AtomicRefCell::new(VecDeque::with_capacity(P::INPUT_EVENT_CAPACITY))
+        };
+
         let wrapper = Arc::new(Self {
-            plugin: Mutex::new(plugin),
+            plugin: TryLock::new(plugin),
             task_executor,
             params,
             // Initialized later as it needs a reference to the wrapper for the async executor
@@ -341,6 +358,7 @@ impl<P: Vst3Plugin> WrapperInner<P> {
             ),
             current_buffer_config: AtomicCell::new(None),
             current_process_mode: AtomicCell::new(ProcessMode::Realtime),
+            #[cfg(feature = "editor")]
             current_track_info: AtomicRefCell::new(TrackInfo::default()),
             last_process_status: AtomicCell::new(ProcessStatus::Normal),
             current_latency: AtomicU32::new(0),
@@ -350,10 +368,9 @@ impl<P: Vst3Plugin> WrapperInner<P> {
                 0,
                 AudioIOLayout::default(),
             )),
-            input_events: AtomicRefCell::new(VecDeque::with_capacity(1024)),
-            output_events: AtomicRefCell::new(VecDeque::with_capacity(1024)),
+            input_note_events,
             note_expression_controller: AtomicRefCell::new(NoteExpressionController::default()),
-            process_events: AtomicRefCell::new(Vec::with_capacity(4096)),
+            process_events: AtomicRefCell::new(Vec::with_capacity(P::INPUT_EVENT_CAPACITY)),
             updated_state_sender,
             updated_state_receiver,
 
@@ -377,7 +394,8 @@ impl<P: Vst3Plugin> WrapperInner<P> {
         {
             *wrapper.editor.borrow_mut() = wrapper
                 .plugin
-                .lock()
+                .try_lock()
+                .unwrap()
                 .editor(nice_plug_core::context::gui::AsyncExecutor::new(
                     Arc::new({
                         let wrapper = Arc::downgrade(&wrapper);
@@ -436,12 +454,20 @@ impl<P: Vst3Plugin> WrapperInner<P> {
         }
     }
 
-    pub fn make_process_context(&self, transport: Transport) -> WrapperProcessContext<'_, P> {
+    pub fn make_process_context<'a>(
+        &'a self,
+        transport: Transport,
+        host_out_events: Option<ComRef<'a, IEventList>>,
+        total_buffer_len: usize,
+        current_sample_idx: usize,
+    ) -> WrapperProcessContext<'a, P> {
         WrapperProcessContext {
             inner: self,
-            input_events_guard: self.input_events.borrow_mut(),
-            output_events_guard: self.output_events.borrow_mut(),
+            input_events_guard: self.input_note_events.borrow_mut(),
             transport,
+            host_out_events,
+            total_buffer_len: total_buffer_len as u32,
+            current_sample_idx: current_sample_idx as u32,
         }
     }
 
@@ -518,6 +544,10 @@ impl<P: Vst3Plugin> WrapperInner<P> {
         normalized_value: f32,
         sample_rate: Option<f32>,
     ) -> tresult {
+        if !normalized_value.is_finite() {
+            return kInvalidArgument;
+        }
+
         match self.param_by_hash.get(&hash) {
             Some(param_ptr) => {
                 if unsafe { param_ptr._internal_set_normalized_value(normalized_value) } {
@@ -613,10 +643,13 @@ impl<P: Vst3Plugin> WrapperInner<P> {
         // Only trigger a restart if it's actually needed
         let old_latency = self.current_latency.swap(samples, Ordering::SeqCst);
         if old_latency != samples {
-            let task_posted =
-                self.schedule_gui(Task::TriggerRestart(RestartFlags_::kLatencyChanged));
-            crate::nice_debug_assert!(task_posted, "The task queue is full, dropping task...");
+            self.request_restart();
         }
+    }
+
+    pub fn request_restart(&self) {
+        let task_posted = self.schedule_gui(Task::TriggerRestart(RestartFlags_::kLatencyChanged));
+        crate::nice_debug_assert!(task_posted, "The task queue is full, dropping task...");
     }
 
     /// Immediately set the plugin state. Returns `false` if the deserialization failed. The plugin
@@ -630,21 +663,16 @@ impl<P: Vst3Plugin> WrapperInner<P> {
     ///
     /// `self.plugin` must _not_ be locked while calling this function or it will deadlock.
     pub fn set_state_inner(&self, state: &mut PluginState) -> bool {
-        let audio_io_layout = self.current_audio_io_layout.load();
-        let buffer_config = self.current_buffer_config.load();
-
-        // FIXME: This is obviously not realtime-safe, but loading presets without doing this could
-        //        lead to inconsistencies. It's the plugin's responsibility to not perform any
-        //        realtime-unsafe work when the activate function is called a second time if it
-        //        supports runtime preset loading.  `state::deserialize_object()` normally never
+        // FIXME: This is obviously not realtime-safe, but loading presets without doing this
+        //        could lead to inconsistencies. `state::deserialize_object()` normally never
         //        allocates, but if the plugin has persistent non-parameter data then its
         //        `deserialize_fields()` implementation may still allocate.
-        let mut success = permit_alloc(|| unsafe {
+        let success = permit_alloc(|| unsafe {
             state::deserialize_object::<P>(
                 state,
                 self.params.clone(),
                 state::make_params_getter(&self.param_by_hash, &self.param_id_to_hash),
-                buffer_config.as_ref(),
+                self.current_buffer_config.load().as_ref(),
             )
         });
         if !success {
@@ -653,26 +681,6 @@ impl<P: Vst3Plugin> WrapperInner<P> {
             );
             return false;
         }
-
-        // If the plugin was already activated then it needs to be reactivated
-        if let Some(buffer_config) = buffer_config {
-            // NOTE: This needs to be dropped after the `plugin` lock to avoid deadlocks
-            let mut activate_context = self.make_activate_context();
-            let mut plugin = self.plugin.lock();
-
-            // See above
-            success = permit_alloc(|| {
-                plugin.activate(&audio_io_layout, &buffer_config, &mut activate_context)
-            });
-            if success {
-                process_wrapper(|| plugin.reset());
-            }
-        }
-
-        crate::nice_debug_assert!(
-            success,
-            "Plugin returned false when reinitializing after loading state"
-        );
 
         #[cfg(feature = "editor")]
         {

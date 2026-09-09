@@ -29,6 +29,7 @@ impl ActivateContext<SpectralPlugin> for Context {
     fn set_current_voice_capacity(&self, _: u32) {}
 }
 impl ProcessContext<SpectralPlugin> for Context {
+    fn request_restart(&self) {}
     fn plugin_api(&self) -> PluginApi {
         PluginApi::Clap
     }
@@ -40,8 +41,12 @@ impl ProcessContext<SpectralPlugin> for Context {
     fn next_event(&mut self) -> Option<NoteEvent<()>> {
         self.events.pop_front()
     }
-    fn send_event(&mut self, event: NoteEvent<()>) {
+    fn try_send_event(
+        &mut self,
+        event: NoteEvent<()>,
+    ) -> Result<(), (NoteEvent<()>, nice_plug::context::process::SendEventError)> {
         self.output.push(event);
+        Ok(())
     }
     fn set_latency_samples(&self, _: u32) {}
     fn set_current_voice_capacity(&self, _: u32) {}
@@ -109,18 +114,18 @@ fn process_current(
 fn note(timing: u32, id: i32) -> NoteEvent<()> {
     NoteEvent::NoteOn {
         timing,
-        voice_id: Some(id),
-        channel: 1,
-        note: 60,
+        voice_id: VoiceID::ID(id),
+        channel: Channel::Number(1),
+        key: Key::Number(60),
         velocity: 1.0,
     }
 }
 fn tuning(timing: u32, id: i32, value: f32) -> NoteEvent<()> {
     NoteEvent::PolyTuning {
         timing,
-        voice_id: Some(id),
-        channel: 255,
-        note: 255,
+        voice_id: VoiceID::ID(id),
+        channel: Channel::Wildcard,
+        key: Key::Wildcard,
         tuning: value,
     }
 }
@@ -158,30 +163,30 @@ fn expressions_change_live_voices_and_keep_same_key_ids_independent() {
         tuning(32, 10, 1.25),
         NoteEvent::PolyVolume {
             timing: 32,
-            voice_id: Some(10),
-            channel: 255,
-            note: 255,
+            voice_id: VoiceID::ID(10),
+            channel: Channel::Wildcard,
+            key: Key::Wildcard,
             gain: 2.0,
         },
         NoteEvent::PolyPan {
             timing: 32,
-            voice_id: Some(10),
-            channel: 255,
-            note: 255,
+            voice_id: VoiceID::ID(10),
+            channel: Channel::Wildcard,
+            key: Key::Wildcard,
             pan: -1.0,
         },
         NoteEvent::PolyBrightness {
             timing: 32,
-            voice_id: Some(10),
-            channel: 255,
-            note: 255,
+            voice_id: VoiceID::ID(10),
+            channel: Channel::Wildcard,
+            key: Key::Wildcard,
             brightness: 0.8,
         },
         NoteEvent::PolyPressure {
             timing: 32,
-            voice_id: Some(10),
-            channel: 255,
-            note: 255,
+            voice_id: VoiceID::ID(10),
+            channel: Channel::Wildcard,
+            key: Key::Wildcard,
             pressure: 0.3,
         },
     ]);
@@ -198,9 +203,9 @@ fn expressions_change_live_voices_and_keep_same_key_ids_independent() {
     );
     c.events.push_back(NoteEvent::NoteOff {
         timing: 0,
-        voice_id: Some(10),
-        channel: 255,
-        note: 255,
+        voice_id: VoiceID::ID(10),
+        channel: Channel::Wildcard,
+        key: Key::Wildcard,
         velocity: 0.0,
     });
     process(&mut p, &mut c, 512, 256);
@@ -234,18 +239,18 @@ fn wildcard_release_choke_zero_velocity_and_voice_end() {
     assert!(voice(&p, 12).held);
     c.events.push_back(NoteEvent::NoteOff {
         timing: 0,
-        voice_id: None,
-        channel: 1,
-        note: 60,
+        voice_id: VoiceID::Wildcard,
+        channel: Channel::Number(1),
+        key: Key::Number(60),
         velocity: 0.0,
     });
     process(&mut p, &mut c, 256, 256);
     assert!(p.voices.iter().all(|v| !v.held));
     c.events.push_back(NoteEvent::Choke {
         timing: 19,
-        voice_id: None,
-        channel: 255,
-        note: 255,
+        voice_id: VoiceID::Wildcard,
+        channel: Channel::Wildcard,
+        key: Key::Wildcard,
     });
     process(&mut p, &mut c, 512, 256);
     assert!(p.voices.iter().all(|v| !v.occupied));
@@ -265,16 +270,16 @@ fn native_values_override_midi_y_z_and_expression_is_not_brightness() {
         tuning(0, 1, 0.25),
         NoteEvent::PolyBrightness {
             timing: 0,
-            voice_id: Some(1),
-            channel: 1,
-            note: 60,
+            voice_id: VoiceID::ID(1),
+            channel: Channel::Number(1),
+            key: Key::Number(60),
             brightness: 0.8,
         },
         NoteEvent::PolyPressure {
             timing: 0,
-            voice_id: Some(1),
-            channel: 1,
-            note: 60,
+            voice_id: VoiceID::ID(1),
+            channel: Channel::Number(1),
+            key: Key::Number(60),
             pressure: 0.4,
         },
         NoteEvent::MidiCC {
@@ -295,9 +300,9 @@ fn native_values_override_midi_y_z_and_expression_is_not_brightness() {
         },
         NoteEvent::PolyExpression {
             timing: 2,
-            voice_id: Some(1),
-            channel: 1,
-            note: 60,
+            voice_id: VoiceID::ID(1),
+            channel: Channel::Number(1),
+            key: Key::Number(60),
             expression: 0.5,
         },
     ]);
@@ -326,16 +331,16 @@ fn sample_timing_and_audio_are_independent_of_host_partition() {
             tuning(777, 1, 7.0),
             NoteEvent::PolyPan {
                 timing: 931,
-                voice_id: Some(1),
-                channel: 1,
-                note: 60,
+                voice_id: VoiceID::ID(1),
+                channel: Channel::Number(1),
+                key: Key::Number(60),
                 pan: 1.0,
             },
             NoteEvent::NoteOff {
                 timing: 1987,
-                voice_id: Some(1),
-                channel: 1,
-                note: 60,
+                voice_id: VoiceID::ID(1),
+                channel: Channel::Number(1),
+                key: Key::Number(60),
                 velocity: 0.0,
             },
         ];
@@ -398,9 +403,9 @@ fn stealing_and_release_send_voice_end_without_allocating() {
     }
     c.events.push_back(NoteEvent::NoteOff {
         timing: 3,
-        voice_id: None,
-        channel: 255,
-        note: 255,
+        voice_id: VoiceID::Wildcard,
+        channel: Channel::Wildcard,
+        key: Key::Wildcard,
         velocity: 0.0,
     });
     process(&mut p, &mut c, 256, 256);
@@ -431,9 +436,9 @@ fn mpe_zones_combine_master_and_member_controls_and_rpn_bend_ranges() {
     p.consume_note_event(note(0, 1));
     p.consume_note_event(NoteEvent::NoteOn {
         timing: 0,
-        voice_id: Some(2),
-        channel: 14,
-        note: 60,
+        voice_id: VoiceID::ID(2),
+        channel: Channel::Number(14),
+        key: Key::Number(60),
         velocity: 1.0,
     });
     for (channel, value) in [(0, 1.0), (1, 1.0), (15, 0.0), (14, 1.0)] {
@@ -471,7 +476,7 @@ fn mpe_zones_combine_master_and_member_controls_and_rpn_bend_ranges() {
     assert!((voice(&p, 1).expression.pressure - 0.3).abs() < 1e-6);
     assert!((voice(&p, 1).expression.timbre - 0.8).abs() < 1e-6);
     cc(&mut p, 0, 64, 127);
-    p.release_voice(Some(1), 1, 60);
+    p.release_voice(VoiceID::ID(1), Channel::Number(1), Key::Number(60));
     assert!(voice(&p, 1).sustained);
     cc(&mut p, 0, 64, 0);
     assert!(!voice(&p, 1).sustained);
@@ -488,9 +493,9 @@ fn invalid_expression_values_do_not_poison_audio_or_voice_state() {
         tuning(1, 1, f32::NAN),
         NoteEvent::PolyVolume {
             timing: 1,
-            voice_id: Some(1),
-            channel: 1,
-            note: 60,
+            voice_id: VoiceID::ID(1),
+            channel: Channel::Number(1),
+            key: Key::Number(60),
             gain: f32::INFINITY,
         },
         NoteEvent::MidiPitchBend {
@@ -511,32 +516,32 @@ fn same_sample_wildcards_apply_to_new_voices_in_order_with_specific_values() {
     c.events.extend([
         NoteEvent::PolyVolume {
             timing: 0,
-            voice_id: None,
-            channel: 255,
-            note: 255,
+            voice_id: VoiceID::Wildcard,
+            channel: Channel::Wildcard,
+            key: Key::Wildcard,
             gain: 0.5,
         },
         note(0, 1),
         note(0, 2),
         NoteEvent::PolyVolume {
             timing: 0,
-            voice_id: Some(1),
-            channel: 255,
-            note: 255,
+            voice_id: VoiceID::ID(1),
+            channel: Channel::Wildcard,
+            key: Key::Wildcard,
             gain: 2.0,
         },
         NoteEvent::PolyVolume {
             timing: 0,
-            voice_id: None,
-            channel: 255,
-            note: 255,
+            voice_id: VoiceID::Wildcard,
+            channel: Channel::Wildcard,
+            key: Key::Wildcard,
             gain: 0.75,
         },
         NoteEvent::PolyVolume {
             timing: 0,
-            voice_id: Some(2),
-            channel: 255,
-            note: 255,
+            voice_id: VoiceID::ID(2),
+            channel: Channel::Wildcard,
+            key: Key::Wildcard,
             gain: 3.0,
         },
     ]);
@@ -566,3 +571,78 @@ fn mpe_configuration_resets_changed_channels_and_member_ranges_are_shared() {
 
 #[path = "particle_tests.rs"]
 mod particle_tests;
+
+#[test]
+fn typed_addresses_match_every_specified_component() {
+    let (mut p, mut c) = setup();
+    for (id, channel, key) in [
+        (Some(1), 1, 60),
+        (Some(2), 1, 60),
+        (Some(3), 1, 61),
+        (Some(4), 2, 60),
+        (None, 1, 60),
+    ] {
+        c.events.push_back(NoteEvent::NoteOn {
+            timing: 0,
+            voice_id: id.map_or(VoiceID::Wildcard, VoiceID::ID),
+            channel: Channel::Number(channel),
+            key: Key::Number(key),
+            velocity: 1.0,
+        });
+    }
+    for (voice_id, channel, key, gain) in [
+        (VoiceID::Wildcard, Channel::Number(1), Key::Wildcard, 0.5),
+        (VoiceID::Wildcard, Channel::Wildcard, Key::Number(61), 0.75),
+        (VoiceID::ID(1), Channel::Number(1), Key::Number(60), 2.0),
+        // A matching ID must not override a conflicting channel or key.
+        (VoiceID::ID(1), Channel::Number(2), Key::Number(60), 3.0),
+        (VoiceID::ID(1), Channel::Number(1), Key::Number(61), 4.0),
+    ] {
+        c.events.push_back(NoteEvent::PolyVolume {
+            timing: 0,
+            voice_id,
+            channel,
+            key,
+            gain,
+        });
+    }
+    process(&mut p, &mut c, 0, 256);
+    for (id, gain) in [(1, 2.0), (2, 0.5), (3, 0.75), (4, 1.0)] {
+        assert_eq!(voice(&p, id).expression.gain, gain);
+    }
+    let anonymous = p
+        .voices
+        .iter()
+        .find(|v| v.occupied && v.voice_id.is_none())
+        .unwrap();
+    assert_eq!(anonymous.expression.gain, 0.5);
+
+    c.events.push_back(NoteEvent::NoteOff {
+        timing: 0,
+        voice_id: VoiceID::Wildcard,
+        channel: Channel::Number(1),
+        key: Key::Number(60),
+        velocity: 0.0,
+    });
+    process(&mut p, &mut c, 256, 256);
+    assert!(!voice(&p, 1).held);
+    assert!(!voice(&p, 2).held);
+    assert!(voice(&p, 3).held);
+    assert!(voice(&p, 4).held);
+    assert!(
+        p.voices
+            .iter()
+            .filter(|v| v.occupied && v.voice_id.is_none())
+            .all(|v| !v.held)
+    );
+
+    c.events.push_back(NoteEvent::Choke {
+        timing: 0,
+        voice_id: VoiceID::ID(3),
+        channel: Channel::Wildcard,
+        key: Key::Number(61),
+    });
+    process(&mut p, &mut c, 512, 256);
+    assert!(!p.voices.iter().any(|v| v.occupied && v.voice_id == Some(3)));
+    assert!(voice(&p, 4).held);
+}

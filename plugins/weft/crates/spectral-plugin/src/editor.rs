@@ -18,7 +18,6 @@ use nice_plug::context::gui::GuiContext;
 use nice_plug::params::Param;
 use nice_plug_egui::NiceEguiApp;
 use nice_plug_egui::baseview::HandlerError;
-use oiko_plugin::gestures::ParameterWriter;
 use oiko_ui::theme::{Palette, apply_theme};
 use parameter_history::{ParameterGestures, TrackedParamSetter};
 use rendering::{LineTrail, PlotContext, VisualMotionPhase, draw_harmonic_preview};

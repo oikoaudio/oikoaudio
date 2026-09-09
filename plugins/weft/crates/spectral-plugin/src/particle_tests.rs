@@ -53,9 +53,9 @@ fn silent_initial_expression_and_unmapped_notes_cannot_trigger() {
     c.events.extend([
         NoteEvent::PolyVolume {
             timing: 137,
-            voice_id: Some(1),
-            channel: 255,
-            note: 255,
+            voice_id: VoiceID::ID(1),
+            channel: Channel::Wildcard,
+            key: Key::Wildcard,
             gain: 0.0,
         },
         note(137, 1),
@@ -88,7 +88,7 @@ fn microtonal_sources_follow_pitch_without_rerolling_and_pins_are_independent() 
     assert!(((b.center_log2_hz - a.center_log2_hz) - (391.71_f32 / 317.3).log2()).abs() < 1e-5);
     p.params.pinned_notes.set(60, true);
     p.update_particle_sources();
-    p.choke_voice(Some(1), 255, 255);
+    p.choke_voice(VoiceID::ID(1), Channel::Wildcard, Key::Wildcard);
     p.update_particle_sources();
     let births = p.particles.engine.births;
     for _ in 0..40 {
@@ -115,10 +115,10 @@ fn sustain_release_overlap_choke_and_slot_reuse_do_not_leak_identities() {
     process(&mut p, &mut c, 0, 256);
     assert_eq!(p.particles.engine.births, 2);
     p.set_sustain(1, true);
-    p.release_voice(Some(1), 255, 255);
+    p.release_voice(VoiceID::ID(1), Channel::Wildcard, Key::Wildcard);
     p.update_particle_sources();
     assert!(voice(&p, 1).sustained);
-    p.choke_voice(Some(2), 255, 255);
+    p.choke_voice(VoiceID::ID(2), Channel::Wildcard, Key::Wildcard);
     p.flush_terminated(&mut c, 0);
     let old = frame(&mut p);
     p.consume_note_event(note(0, 3));
@@ -128,7 +128,7 @@ fn sustain_release_overlap_choke_and_slot_reuse_do_not_leak_identities() {
     // Retiring windows retain their pitch even when their host slot is reused.
     assert_eq!(old.windows[1].center_log2_hz, new.windows[1].center_log2_hz);
     p.set_sustain(1, false);
-    p.release_voice(Some(3), 255, 255);
+    p.release_voice(VoiceID::ID(3), Channel::Wildcard, Key::Wildcard);
     p.update_particle_sources();
     let births = p.particles.engine.births;
     unsafe {
@@ -172,9 +172,9 @@ fn particle_audio_and_decisions_survive_host_partitions_and_automation() {
             tuning(8011, 1, -0.53),
             NoteEvent::NoteOff {
                 timing: 9987,
-                voice_id: Some(1),
-                channel: 255,
-                note: 255,
+                voice_id: VoiceID::ID(1),
+                channel: Channel::Wildcard,
+                key: Key::Wildcard,
                 velocity: 0.0,
             },
         ];
@@ -448,9 +448,9 @@ fn particles_run_without_notes_and_keep_depth_before_during_and_after_note_input
                         } else {
                             c.events.push_back(NoteEvent::NoteOff {
                                 timing: 137,
-                                voice_id: Some(1),
-                                channel: 255,
-                                note: 255,
+                                voice_id: VoiceID::ID(1),
+                                channel: Channel::Wildcard,
+                                key: Key::Wildcard,
                                 velocity: 0.0,
                             });
                         }
@@ -697,9 +697,9 @@ fn benchmark_particle_processor() {
                         for id in 0..64 {
                             c.events.push_back(NoteEvent::NoteOn {
                                 timing: 0,
-                                voice_id: Some(id),
-                                channel: 1,
-                                note: 36 + id as u8,
+                                voice_id: VoiceID::ID(id),
+                                channel: Channel::Number(1),
+                                key: Key::Number(36 + id as u8),
                                 velocity: 1.0,
                             });
                         }

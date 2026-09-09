@@ -1,37 +1,37 @@
+use atomic_refcell::AtomicRefMut;
 use nice_plug_core::audio_setup::{AuxiliaryBuffers, BufferConfig, ProcessMode};
 use nice_plug_core::context::process::Transport;
-use nice_plug_core::midi::sysex::SysExMessage;
-use nice_plug_core::midi::{MidiConfig, NoteEvent};
+#[cfg(feature = "editor")]
+use nice_plug_core::editor::Editor;
+use nice_plug_core::midi::{Channel, Key, MidiConfig, NoteEvent, VoiceID};
 use nice_plug_core::params::ParamFlags;
-use nice_plug_core::plugin::{ProcessStatus, TrackColor, TrackInfo};
-use std::borrow::Borrow;
+use nice_plug_core::plugin::ProcessStatus;
 use std::ffi::c_void;
 use std::mem::{self, MaybeUninit};
 use std::num::NonZeroU32;
 use std::ptr::NonNull;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::time::{Duration, Instant};
 use vst3::Steinberg::Vst::ProcessContext_::StatesAndFlags_::{
     kBarPositionValid, kCycleActive, kCycleValid, kPlaying, kProjectTimeMusicValid, kRecording,
     kTempoValid, kTimeSigValid,
 };
 use vst3::Steinberg::Vst::{
     BusDirection, CString,
-    ChannelContext::{self, IInfoListener, IInfoListenerTrait},
-    CtrlNumber, DataEvent, Event,
+    ChannelContext::{IInfoListener, IInfoListenerTrait},
+    CtrlNumber,
     Event_::EventTypes_,
-    IAttributeList, IAttributeListTrait, IAudioProcessor, IAudioProcessorTrait, IComponent,
-    IComponentHandler, IComponentTrait, IEditController, IEditControllerTrait, IEventListTrait,
-    IMidiMapping, IMidiMappingTrait, INoteExpressionController, INoteExpressionControllerTrait,
+    IAttributeList, IAudioProcessor, IAudioProcessorTrait, IComponent, IComponentHandler,
+    IComponentTrait, IEditController, IEditControllerTrait, IEventListTrait, IMidiMapping,
+    IMidiMappingTrait, INoteExpressionController, INoteExpressionControllerTrait,
     IParamValueQueueTrait, IParameterChangesTrait, IProcessContextRequirements,
     IProcessContextRequirements_, IProcessContextRequirementsTrait, IUnitInfo, IUnitInfoTrait,
-    IoMode, LegacyMIDICCOutEvent, MediaType, NoteExpressionTypeID, NoteExpressionTypeInfo,
-    NoteExpressionValue, NoteExpressionValueDescription, NoteOffEvent, NoteOnEvent, ParamID,
-    ParamValue, ParameterInfo,
+    IoMode, MediaType, NoteExpressionTypeID, NoteExpressionTypeInfo, NoteExpressionValue,
+    NoteExpressionValueDescription, ParamID, ParamValue, ParameterInfo,
     ParameterInfo_::ParameterFlags_,
-    PolyPressureEvent, ProcessData, ProcessModes_, ProcessSetup, ProgramListID, ProgramListInfo,
-    SpeakerArrangement, String128, TChar, UnitID, UnitInfo, kNoParamId, kNoParentUnitId,
-    kNoProgramListId, kRootUnitId,
+    ProcessData, ProcessModes_, ProcessSetup, ProgramListID, ProgramListInfo, SpeakerArrangement,
+    String128, TChar, UnitID, UnitInfo, kNoParamId, kNoParentUnitId, kNoProgramListId, kRootUnitId,
 };
 use vst3::Steinberg::{
     FIDString, FUnknown, IBStream, IBStreamTrait, IPlugView, IPluginBaseTrait, TBool, TUID, int16,
@@ -41,13 +41,13 @@ use vst3::{Class, ComRef};
 use widestring::U16CStr;
 
 use super::inner::{ProcessEvent, WrapperInner};
-use super::note_expressions::{self, NoteExpressionController};
+use super::note_expressions;
 use super::util::{VST3_MIDI_CCS, VST3_MIDI_NUM_PARAMS, VST3_MIDI_PARAMS_START, u16strlcpy};
 use super::util::{VST3_MIDI_CHANNELS, VST3_MIDI_PARAMS_END};
 use crate::util::permit_alloc;
 use crate::wrapper::state;
 use crate::wrapper::util::buffer_management::{BufferManager, ChannelPointers};
-use crate::wrapper::util::{clamp_input_event_timing, clamp_output_event_timing, process_wrapper};
+use crate::wrapper::util::{clamp_input_event_timing, process_wrapper};
 use crate::wrapper::vst3::Vst3Plugin;
 
 #[allow(clippy::unnecessary_cast)]
@@ -413,31 +413,80 @@ impl<P: Vst3Plugin> IComponentTrait for Wrapper<P> {
                     unsafe { param._internal_update_smoother(buffer_config.sample_rate, true) };
                 }
 
-                // NOTE: This needs to be dropped after the `plugin` lock to avoid deadlocks
                 let mut activate_context = self.inner.make_activate_context();
                 let audio_io_layout = self.inner.current_audio_io_layout.load();
-                let mut plugin = self.inner.plugin.lock();
-                if plugin.activate(&audio_io_layout, &buffer_config, &mut activate_context) {
-                    // NOTE: We don't call `Plugin::reset()` here. The call is done in `set_process()`
-                    //       instead. Otherwise we would call the function twice, and `set_process()` needs
-                    //       to be called after this function before the plugin may process audio again.
 
-                    // This preallocates enough space so we can transform all of the host's raw
-                    // channel pointers into a set of `Buffer` objects for the plugin's main and
-                    // auxiliary IO
-                    *self.inner.buffer_manager.borrow_mut() = BufferManager::for_audio_io_layout(
-                        buffer_config.max_buffer_size as usize,
-                        audio_io_layout,
-                    );
+                // In the case a host misbehaves and tries to activate the plugin without waiting for the
+                // `process` method to finish, manually wait for that method to finish.
+                let now = Instant::now();
+                let mut result = kResultFalse;
+                loop {
+                    if let Some(mut plugin) = self.inner.plugin.try_lock() {
+                        if plugin.activate(&audio_io_layout, &buffer_config, &mut activate_context)
+                        {
+                            // NOTE: We don't call `Plugin::reset()` here. The call is done in `set_process()`
+                            //       instead. Otherwise we would call the function twice, and `set_process()` needs
+                            //       to be called after this function before the plugin may process audio again.
 
-                    kResultOk
-                } else {
-                    kResultFalse
+                            // Likewise, make sure that the buffers are also not currently being used by the process
+                            // method.
+                            let now_2 = Instant::now();
+                            loop {
+                                if let Ok(mut buffer_manager) =
+                                    self.inner.buffer_manager.try_borrow_mut()
+                                {
+                                    // This preallocates enough space so we can transform all of the host's raw
+                                    // channel pointers into a set of `Buffer` objects for the plugin's main and
+                                    // auxiliary IO
+                                    *buffer_manager = BufferManager::for_audio_io_layout(
+                                        buffer_config.max_buffer_size as usize,
+                                        audio_io_layout,
+                                    );
+
+                                    result = kResultOk;
+
+                                    break;
+                                } else if now_2.elapsed() > Duration::from_secs(1) {
+                                    crate::nice_error!(
+                                        "Failed to acquire lock on buffers while activating"
+                                    );
+                                    break;
+                                } else {
+                                    std::thread::sleep(Duration::from_millis(1));
+                                }
+                            }
+                        }
+
+                        break;
+                    } else if now.elapsed() > Duration::from_secs(1) {
+                        crate::nice_error!("Failed to acquire lock on plugin while activating");
+                        break;
+                    } else {
+                        std::thread::sleep(Duration::from_millis(1));
+                    }
                 }
+
+                // NOTE: This needs to be dropped after the `plugin` lock to avoid deadlocks
+                drop(activate_context);
+
+                result
             }
             (true, None) => kResultFalse,
             (false, _) => {
-                self.inner.plugin.lock().deactivate();
+                // In the case a host misbehaves and tries to activate the plugin without waiting for the
+                // `process` method to finish, manually wait for that method to finish.
+                let now = Instant::now();
+                loop {
+                    if let Some(mut plugin) = self.inner.plugin.try_lock() {
+                        plugin.deactivate();
+                        break;
+                    } else if now.elapsed() > Duration::from_secs(1) {
+                        crate::nice_error!("Failed to acquire lock on plugin while deactivating");
+                        break;
+                    } else {
+                        std::thread::sleep(Duration::from_millis(1));
+                    }
+                }
 
                 kResultOk
             }
@@ -467,7 +516,17 @@ impl<P: Vst3Plugin> IComponentTrait for Wrapper<P> {
 
         let stream_byte_size = (eof_pos - current_pos) as i32;
         let mut num_bytes_read = 0;
-        let mut read_buffer: Vec<u8> = Vec::with_capacity(stream_byte_size as usize);
+
+        let mut read_buffer: Vec<u8> = Vec::new();
+
+        if read_buffer
+            .try_reserve_exact(stream_byte_size as usize)
+            .is_err()
+        {
+            crate::nice_error!("Failed to load state: Failed to allocate buffer for state stream");
+            return kResultFalse;
+        }
+
         unsafe {
             state.read(
                 read_buffer.as_mut_ptr() as *mut c_void,
@@ -988,7 +1047,7 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                 }
             };
 
-            *self.inner.note_expression_controller.borrow_mut() = NoteExpressionController::default();
+            *self.inner.note_expression_controller.borrow_mut() = super::note_expressions::NoteExpressionController::default();
             process_wrapper(|| plugin.reset());
         }
 
@@ -1046,6 +1105,39 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
             let mut process_events = self.inner.process_events.borrow_mut();
             process_events.clear();
 
+            let push_process_event = |process_events: &mut AtomicRefMut<Vec<ProcessEvent<P>>>,
+                                      event: ProcessEvent<P>| {
+                permit_alloc(|| {
+                    // In the rare case the host sends a very large amount of events at once, there
+                    // is not much we can do except to just accept the allocation.
+                    if process_events.len() == process_events.capacity() {
+                        crate::nice_warn!(
+                            "Input event buffer filled up! This will cause an allocation."
+                        );
+                    }
+
+                    // Make sure events are (stable) sorted by timing. The majority of the time hosts
+                    // will send events in order, so sorting like this shouldn't be too much of a
+                    // performance hit.
+                    //
+                    // NOTE: It's important that this sort is stable, because parameter changes need to be
+                    //       processed before note events. Otherwise you'll get out of bounds note events
+                    //       with block splitting when the note event occurs at one index after the end (or
+                    //       on the exclusive end index) of the block.
+                    if let Some(last_event) = process_events.last() {
+                        if event.timing() >= last_event.timing() {
+                            process_events.push(event);
+                        } else {
+                            let insert_i =
+                                process_events.partition_point(|x| x.timing() <= event.timing());
+                            process_events.insert(insert_i, event);
+                        }
+                    } else {
+                        process_events.push(event);
+                    }
+                });
+            };
+
             // First we'll go through the parameter changes. This may also include MIDI CC messages
             // if the plugin supports those
             if let Some(param_changes) = unsafe { ComRef::from_raw(data.inputParameterChanges) } {
@@ -1091,32 +1183,39 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                                     let midi_cc = (midi_param_relative_idx % VST3_MIDI_CCS) as u8;
                                     let midi_channel =
                                         (midi_param_relative_idx / VST3_MIDI_CCS) as u8;
-                                    process_events.push(ProcessEvent::NoteEvent(match midi_cc {
-                                        // kAfterTouch
-                                        128 => NoteEvent::MidiChannelPressure {
-                                            timing,
-                                            channel: midi_channel,
-                                            pressure: value,
-                                        },
-                                        // kPitchBend
-                                        129 => NoteEvent::MidiPitchBend {
-                                            timing,
-                                            channel: midi_channel,
-                                            value,
-                                        },
-                                        n => NoteEvent::MidiCC {
-                                            timing,
-                                            channel: midi_channel,
-                                            cc: n,
-                                            value,
-                                        },
-                                    }));
+
+                                    push_process_event(
+                                        &mut process_events,
+                                        ProcessEvent::NoteEvent(match midi_cc {
+                                            // kAfterTouch
+                                            128 => NoteEvent::MidiChannelPressure {
+                                                timing,
+                                                channel: midi_channel,
+                                                pressure: value,
+                                            },
+                                            // kPitchBend
+                                            129 => NoteEvent::MidiPitchBend {
+                                                timing,
+                                                channel: midi_channel,
+                                                value,
+                                            },
+                                            n => NoteEvent::MidiCC {
+                                                timing,
+                                                channel: midi_channel,
+                                                cc: n,
+                                                value,
+                                            },
+                                        }),
+                                    );
                                 } else if P::SAMPLE_ACCURATE_AUTOMATION {
-                                    process_events.push(ProcessEvent::ParameterChange {
-                                        timing,
-                                        hash: param_hash,
-                                        normalized_value: value,
-                                    });
+                                    push_process_event(
+                                        &mut process_events,
+                                        ProcessEvent::ParameterChange {
+                                            timing,
+                                            hash: param_hash,
+                                            normalized_value: value,
+                                        },
+                                    );
                                 } else {
                                     self.inner.set_normalized_value_by_hash(
                                         param_hash,
@@ -1137,6 +1236,28 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                 if let Some(events) = unsafe { ComRef::from_raw(data.inputEvents) } {
                     let num_events = unsafe { events.getEventCount() };
 
+                    fn voice_from_i32(v: i32) -> VoiceID {
+                        if v >= 0 {
+                            VoiceID::ID(v)
+                        } else {
+                            VoiceID::Wildcard
+                        }
+                    }
+                    fn channel_from_i16(c: i16) -> Channel {
+                        if (0..=15).contains(&c) {
+                            Channel::Number(c as u8)
+                        } else {
+                            Channel::Wildcard
+                        }
+                    }
+                    fn key_from_i16(k: i16) -> Key {
+                        if (0..=127).contains(&k) {
+                            Key::Number(k as u8)
+                        } else {
+                            Key::Wildcard
+                        }
+                    }
+
                     let mut event: MaybeUninit<_> = MaybeUninit::uninit();
                     for i in 0..num_events {
                         let result = unsafe { events.getEvent(i, event.as_mut_ptr()) };
@@ -1155,60 +1276,66 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                             // expression value events
                             note_expression_controller.register_note(&event);
 
-                            process_events.push(ProcessEvent::NoteEvent(NoteEvent::NoteOn {
-                                timing,
-                                voice_id: if event.noteId != -1 {
-                                    Some(event.noteId)
-                                } else {
-                                    None
-                                },
-                                channel: event.channel as u8,
-                                note: event.pitch as u8,
-                                velocity: event.velocity,
-                            }));
-                            // NoteOnEvent tuning is in cents; common tuning is in semitones.
-                            if event.tuning.is_finite() && event.tuning != 0.0 {
-                                process_events.push(ProcessEvent::NoteEvent(NoteEvent::PolyTuning {
+                            push_process_event(
+                                &mut process_events,
+                                ProcessEvent::NoteEvent(NoteEvent::NoteOn {
                                     timing,
-                                    voice_id: (event.noteId >= 0).then_some(event.noteId),
-                                    channel: event.channel as u8,
-                                    note: event.pitch as u8,
-                                    tuning: event.tuning / 100.0,
-                                }));
+                                    voice_id: voice_from_i32(event.noteId),
+                                    channel: channel_from_i16(event.channel),
+                                    key: key_from_i16(event.pitch),
+                                    velocity: event.velocity,
+                                }),
+                            );
+                            // VST3 note-on tuning uses cents; common tuning uses semitones.
+                            if event.tuning.is_finite() && event.tuning != 0.0 {
+                                push_process_event(
+                                    &mut process_events,
+                                    ProcessEvent::NoteEvent(NoteEvent::PolyTuning {
+                                        timing,
+                                        voice_id: voice_from_i32(event.noteId),
+                                        channel: channel_from_i16(event.channel),
+                                        key: key_from_i16(event.pitch),
+                                        tuning: event.tuning / 100.0,
+                                    }),
+                                );
                             }
+
                         } else if event.r#type == EventTypes_::kNoteOffEvent as u16 {
                             let event = unsafe { event.__field0.noteOff };
-                            process_events.push(ProcessEvent::NoteEvent(NoteEvent::NoteOff {
-                                timing,
-                                voice_id: if event.noteId != -1 {
-                                    Some(event.noteId)
-                                } else {
-                                    None
-                                },
-                                channel: event.channel as u8,
-                                note: event.pitch as u8,
-                                velocity: event.velocity,
-                            }));
+
+                            push_process_event(
+                                &mut process_events,
+                                ProcessEvent::NoteEvent(NoteEvent::NoteOff {
+                                    timing,
+                                    voice_id: voice_from_i32(event.noteId),
+                                    channel: channel_from_i16(event.channel),
+                                    key: key_from_i16(event.pitch),
+                                    velocity: event.velocity,
+                                }),
+                            );
                         } else if event.r#type == EventTypes_::kPolyPressureEvent as u16 {
                             let event = unsafe { event.__field0.polyPressure };
-                            process_events.push(ProcessEvent::NoteEvent(NoteEvent::PolyPressure {
-                                timing,
-                                voice_id: if event.noteId != -1 {
-                                    Some(event.noteId)
-                                } else {
-                                    None
-                                },
-                                channel: event.channel as u8,
-                                note: event.pitch as u8,
-                                pressure: event.pressure,
-                            }));
+
+                            push_process_event(
+                                &mut process_events,
+                                ProcessEvent::NoteEvent(NoteEvent::PolyPressure {
+                                    timing,
+                                    voice_id: voice_from_i32(event.noteId),
+                                    channel: channel_from_i16(event.channel),
+                                    key: key_from_i16(event.pitch),
+                                    pressure: event.pressure,
+                                }),
+                            );
                         } else if event.r#type == EventTypes_::kNoteExpressionValueEvent as u16 {
                             let event = unsafe { event.__field0.noteExpressionValue };
                             match note_expression_controller.translate_event(timing, &event) {
                                 Some(translated_event) => {
-                                    process_events.push(ProcessEvent::NoteEvent(translated_event))
+                                    push_process_event(
+                                        &mut process_events,
+                                        ProcessEvent::NoteEvent(translated_event),
+                                    );
                                 }
-                                None => crate::nice_debug_assert_failure!(
+                                None => crate::nice_trace!(
                                     "Unhandled note expression type: {}",
                                     event.typeId
                                 ),
@@ -1226,26 +1353,15 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                                 std::slice::from_raw_parts(event.bytes, event.size as usize)
                             };
                             if let Ok(note_event) = NoteEvent::from_midi(timing, sysex_buffer) {
-                                process_events.push(ProcessEvent::NoteEvent(note_event));
+                                push_process_event(
+                                    &mut process_events,
+                                    ProcessEvent::NoteEvent(note_event),
+                                );
                             };
                         }
                     }
                 }
             }
-
-            // And then we'll make sure everything is in the right order
-            // NOTE: It's important that this sort is stable, because parameter changes need to be
-            //       processed before note events. Otherwise you'll get out of bounds note events
-            //       with block splitting when the note event occurs at one index after the end (or
-            //       on the exclusive end index) of the block.
-            // FIXME: Apparently stable sort allcoates if the slice is large enough. This should be
-            //        fixed at some point.
-            permit_alloc(|| {
-                process_events.sort_by_key(|event| match event {
-                    ProcessEvent::ParameterChange { timing, .. } => *timing,
-                    ProcessEvent::NoteEvent(event) => event.timing(),
-                })
-            });
 
             let mut block_start = 0usize;
             let mut block_end;
@@ -1259,8 +1375,8 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                 // before note events at the same index.
                 // The extra scope is here to make sure we release the borrow on input_events
                 {
-                    let mut input_events = self.inner.input_events.borrow_mut();
-                    input_events.clear();
+                    let mut input_note_events = self.inner.input_note_events.borrow_mut();
+                    input_note_events.clear();
 
                     block_end = total_buffer_len;
                     for event_idx in event_start_idx..process_events.len() {
@@ -1290,7 +1406,17 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                                 // since we had to create the event object beforehand
                                 let mut event = event.clone();
                                 event.subtract_timing(block_start as u32);
-                                input_events.push_back(event);
+
+                                permit_alloc(|| {
+                                    // In the rare case the host sends a very large amount of events at once, there
+                                    // is not much we can do except to just accept the allocation.
+                                    if input_note_events.len() == input_note_events.capacity() {
+                                        crate::nice_warn!(
+                                            "Input note event buffer filled up! This will cause an allocation."
+                                        );
+                                    }
+                                    input_note_events.push_back(event);
+                                });
                             }
                         }
                     }
@@ -1470,17 +1596,30 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                     }
 
                     let result = if buffer_is_valid {
-                        // NOTE: `parking_lot`'s mutexes sometimes allocate because of their use of
-                        //       thread locals
-                        let mut plugin = permit_alloc(|| self.inner.plugin.lock());
-                        let mut aux = AuxiliaryBuffers {
-                            inputs: buffers.aux_inputs,
-                            outputs: buffers.aux_outputs,
-                        };
-                        let mut context = self.inner.make_process_context(transport);
-                        let result = plugin.process(buffers.main_buffer, &mut aux, &mut context);
-                        self.inner.last_process_status.store(result);
-                        result
+                        // In the case the host misbehaves and tries to activate/deactive the plugin while the
+                        // process loop is still running, just return an error.
+                        if let Some(mut plugin) = self.inner.plugin.try_lock() {
+                            let mut aux = AuxiliaryBuffers {
+                                inputs: buffers.aux_inputs,
+                                outputs: buffers.aux_outputs,
+                            };
+
+                            let host_out_events = unsafe { ComRef::from_raw(data.outputEvents) };
+
+                            let mut context = self.inner.make_process_context(
+                                transport,
+                                host_out_events,
+                                total_buffer_len,
+                                block_start,
+                            );
+
+                            let result =
+                                plugin.process(buffers.main_buffer, &mut aux, &mut context);
+                            self.inner.last_process_status.store(result);
+                            result
+                        } else {
+                            ProcessStatus::Error("Failed to acquire plugin lock")
+                        }
                     } else {
                         ProcessStatus::Normal
                     };
@@ -1494,227 +1633,6 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                         _ => kResultOk,
                     }
                 };
-
-                // Send any events output by the plugin during the process cycle
-                if let Some(events) = unsafe { ComRef::from_raw(data.outputEvents) } {
-                    let mut output_events = self.inner.output_events.borrow_mut();
-                    while let Some(event) = output_events.pop_front() {
-                        // We'll set the correct variant on this struct, or skip to the next loop
-                        // iteration if we don't handle the event type
-                        let mut vst3_event: Event = unsafe { mem::zeroed() };
-                        vst3_event.busIndex = 0;
-                        // There's also a ppqPos field, but uh how about no
-                        vst3_event.sampleOffset = clamp_output_event_timing(
-                            event.timing() + block_start as u32,
-                            total_buffer_len as u32,
-                        ) as i32;
-
-                        // `voice_id.unwrap_or(|| ...)` triggers
-                        // https://github.com/rust-lang/rust-clippy/issues/8522
-                        #[allow(clippy::unnecessary_lazy_evaluations)]
-                        match event {
-                            NoteEvent::NoteOn {
-                                timing: _,
-                                voice_id,
-                                channel,
-                                note,
-                                velocity,
-                            } if P::MIDI_OUTPUT >= MidiConfig::Basic => {
-                                vst3_event.r#type = EventTypes_::kNoteOnEvent as u16;
-                                vst3_event.__field0.noteOn = NoteOnEvent {
-                                    channel: channel as i16,
-                                    pitch: note as i16,
-                                    tuning: 0.0,
-                                    velocity,
-                                    length: 0, // What?
-                                    // We'll use this for our note IDs, that way we don't have to do
-                                    // anything complicated here
-                                    noteId: voice_id
-                                        .unwrap_or_else(|| ((channel as i32) << 8) | note as i32),
-                                };
-                            }
-                            NoteEvent::NoteOff {
-                                timing: _,
-                                voice_id,
-                                channel,
-                                note,
-                                velocity,
-                            } if P::MIDI_OUTPUT >= MidiConfig::Basic => {
-                                vst3_event.r#type = EventTypes_::kNoteOffEvent as u16;
-                                vst3_event.__field0.noteOff = NoteOffEvent {
-                                    channel: channel as i16,
-                                    pitch: note as i16,
-                                    velocity,
-                                    noteId: voice_id
-                                        .unwrap_or_else(|| ((channel as i32) << 8) | note as i32),
-                                    tuning: 0.0,
-                                };
-                            }
-                            // VST3 does not support or need these events, but they should also not
-                            // trigger a debug assertion failure in nice-plug. Also notes how this is
-                            // gated by `P::MIDI_INPUT`.
-                            NoteEvent::VoiceTerminated { .. }
-                                if P::MIDI_INPUT >= MidiConfig::Basic =>
-                            {
-                                continue;
-                            }
-                            NoteEvent::PolyPressure {
-                                timing: _,
-                                voice_id,
-                                channel,
-                                note,
-                                pressure,
-                            } if P::MIDI_OUTPUT >= MidiConfig::Basic => {
-                                vst3_event.r#type = EventTypes_::kPolyPressureEvent as u16;
-                                vst3_event.__field0.polyPressure = PolyPressureEvent {
-                                    channel: channel as i16,
-                                    pitch: note as i16,
-                                    noteId: voice_id
-                                        .unwrap_or_else(|| ((channel as i32) << 8) | note as i32),
-                                    pressure,
-                                };
-                            }
-                            ref event @ (NoteEvent::PolyVolume {
-                                voice_id,
-                                channel,
-                                note,
-                                ..
-                            }
-                            | NoteEvent::PolyPan {
-                                voice_id,
-                                channel,
-                                note,
-                                ..
-                            }
-                            | NoteEvent::PolyTuning {
-                                voice_id,
-                                channel,
-                                note,
-                                ..
-                            }
-                            | NoteEvent::PolyVibrato {
-                                voice_id,
-                                channel,
-                                note,
-                                ..
-                            }
-                            | NoteEvent::PolyExpression {
-                                voice_id,
-                                channel,
-                                note,
-                                ..
-                            }
-                            | NoteEvent::PolyBrightness {
-                                voice_id,
-                                channel,
-                                note,
-                                ..
-                            }) if P::MIDI_OUTPUT >= MidiConfig::Basic => {
-                                match NoteExpressionController::translate_event_reverse(
-                                    voice_id
-                                        .unwrap_or_else(|| ((channel as i32) << 8) | note as i32),
-                                    event,
-                                ) {
-                                    Some(translated_event) => {
-                                        vst3_event.r#type =
-                                            EventTypes_::kNoteExpressionValueEvent as u16;
-                                        vst3_event.__field0.noteExpressionValue = translated_event;
-                                    }
-                                    None => {
-                                        crate::nice_debug_assert_failure!(
-                                            "Mishandled note expression value event"
-                                        );
-                                    }
-                                }
-                            }
-                            NoteEvent::MidiChannelPressure {
-                                timing: _,
-                                channel,
-                                pressure,
-                            } if P::MIDI_OUTPUT >= MidiConfig::MidiCCs => {
-                                vst3_event.r#type = EventTypes_::kLegacyMIDICCOutEvent as u16;
-                                vst3_event.__field0.midiCCOut = LegacyMIDICCOutEvent {
-                                    controlNumber: 128, // kAfterTouch
-                                    channel: channel as std::ffi::c_char,
-                                    value: (pressure * 127.0).round() as std::ffi::c_char,
-                                    value2: 0,
-                                };
-                            }
-                            NoteEvent::MidiPitchBend {
-                                timing: _,
-                                channel,
-                                value,
-                            } if P::MIDI_OUTPUT >= MidiConfig::MidiCCs => {
-                                let scaled = (value * ((1 << 14) - 1) as f32).round() as i32;
-
-                                vst3_event.r#type = EventTypes_::kLegacyMIDICCOutEvent as u16;
-                                vst3_event.__field0.midiCCOut = LegacyMIDICCOutEvent {
-                                    controlNumber: 129, // kPitchBend
-                                    channel: channel as std::ffi::c_char,
-                                    value: (scaled & 0b01111111) as std::ffi::c_char,
-                                    value2: ((scaled >> 7) & 0b01111111) as std::ffi::c_char,
-                                };
-                            }
-                            NoteEvent::MidiCC {
-                                timing: _,
-                                channel,
-                                cc,
-                                value,
-                            } if P::MIDI_OUTPUT >= MidiConfig::MidiCCs => {
-                                vst3_event.r#type = EventTypes_::kLegacyMIDICCOutEvent as u16;
-                                vst3_event.__field0.midiCCOut = LegacyMIDICCOutEvent {
-                                    controlNumber: cc,
-                                    channel: channel as std::ffi::c_char,
-                                    value: (value * 127.0).round() as std::ffi::c_char,
-                                    value2: 0,
-                                };
-                            }
-                            NoteEvent::MidiProgramChange {
-                                timing: _,
-                                channel,
-                                program,
-                            } if P::MIDI_OUTPUT >= MidiConfig::MidiCCs => {
-                                vst3_event.r#type = EventTypes_::kLegacyMIDICCOutEvent as u16;
-                                vst3_event.__field0.midiCCOut = LegacyMIDICCOutEvent {
-                                    controlNumber: 130, // kCtrlProgramChange
-                                    channel: channel as std::ffi::c_char,
-                                    value: program as std::ffi::c_char,
-                                    value2: 0,
-                                };
-                            }
-                            NoteEvent::MidiSysEx { timing: _, message }
-                                if P::MIDI_OUTPUT >= MidiConfig::Basic =>
-                            {
-                                let (padded_sysex_buffer, length) = message.to_buffer();
-                                let padded_sysex_buffer = padded_sysex_buffer.borrow();
-                                crate::nice_debug_assert!(padded_sysex_buffer.len() >= length);
-                                let sysex_buffer = &padded_sysex_buffer[..length];
-
-                                vst3_event.r#type = EventTypes_::kDataEvent as u16;
-                                vst3_event.__field0.data = DataEvent {
-                                    size: sysex_buffer.len() as u32,
-                                    r#type: 0, // kMidiSysEx
-                                    bytes: sysex_buffer.as_ptr(),
-                                };
-
-                                // NOTE: We need to have this call here while `sysex_buffer` is
-                                //       still in scope since the event contains pointers to it
-                                let result = unsafe { events.addEvent(&mut vst3_event) };
-                                crate::nice_debug_assert_eq!(result, kResultOk);
-                                continue;
-                            }
-                            _ => {
-                                crate::nice_debug_assert_failure!(
-                                    "Invalid output event for the current MIDI_OUTPUT setting"
-                                );
-                                continue;
-                            }
-                        };
-
-                        let result = unsafe { events.addEvent(&mut vst3_event) };
-                        crate::nice_debug_assert_eq!(result, kResultOk);
-                    }
-                }
 
                 // If our block ends at the end of the buffer then that means there are no more
                 // unprocessed (parameter) events. If there are more events, we'll just keep going
@@ -1984,51 +1902,66 @@ impl<P: Vst3Plugin> IUnitInfoTrait for Wrapper<P> {
 
 impl<P: Vst3Plugin> IInfoListenerTrait for Wrapper<P> {
     unsafe fn setChannelContextInfos(&self, list: *mut IAttributeList) -> tresult {
-        fn track_color_from_vst3_color(color: u32) -> TrackColor {
-            TrackColor::new(
-                ((color >> 16) & 0xFF) as u8,
-                ((color >> 8) & 0xFF) as u8,
-                (color & 0xFF) as u8,
-                ((color >> 24) & 0xFF) as u8,
-            )
+        #[cfg(not(feature = "editor"))]
+        {
+            let _ = list;
+            return kResultOk;
         }
-        check_null_ptr!(list);
 
-        let list = unsafe { ComRef::from_raw(list) };
-        let Some(list) = list else {
-            return kInvalidArgument;
-        };
+        #[cfg(feature = "editor")]
+        {
+            use nice_plug_core::plugin::{TrackColor, TrackInfo};
+            use vst3::Steinberg::Vst::{ChannelContext, IAttributeListTrait};
 
-        permit_alloc(|| {
-            let mut current_track_info = self.inner.current_track_info.borrow_mut();
-            let mut name = current_track_info.name().to_owned();
-            let mut color = current_track_info.color();
-
-            let mut name_buf: String128 = [0; 128];
-            if unsafe {
-                list.getString(
-                    ChannelContext::kChannelNameKey,
-                    name_buf.as_mut_ptr(),
-                    mem::size_of::<String128>() as u32,
+            fn track_color_from_vst3_color(color: u32) -> TrackColor {
+                TrackColor::new(
+                    ((color >> 16) & 0xFF) as u8,
+                    ((color >> 8) & 0xFF) as u8,
+                    (color & 0xFF) as u8,
+                    ((color >> 24) & 0xFF) as u8,
                 )
-            } == kResultOk
-                && let Ok(cstr) = U16CStr::from_slice_truncate(&name_buf)
-            {
-                name = cstr.to_string_lossy();
-            } // Else if getting the string failed or if there is no null terminator, do nothing with the name.
-
-            let mut color_value = 0i64;
-            if unsafe { list.getInt(ChannelContext::kChannelColorKey, &mut color_value) }
-                == kResultOk
-            {
-                color = Some(track_color_from_vst3_color(color_value as u32));
             }
+            check_null_ptr!(list);
 
-            let track_info = TrackInfo::new(name, color);
-            *current_track_info = track_info.clone();
-            self.inner.plugin.lock().track_info_updated(track_info);
-        });
+            let list = unsafe { ComRef::from_raw(list) };
+            let Some(list) = list else {
+                return kInvalidArgument;
+            };
 
-        kResultOk
+            permit_alloc(|| {
+                let mut current_track_info = self.inner.current_track_info.borrow_mut();
+                let mut name = current_track_info.name().to_owned();
+                let mut color = current_track_info.color();
+
+                let mut name_buf: String128 = [0; 128];
+                if unsafe {
+                    list.getString(
+                        ChannelContext::kChannelNameKey,
+                        name_buf.as_mut_ptr(),
+                        mem::size_of::<String128>() as u32,
+                    )
+                } == kResultOk
+                    && let Ok(cstr) = U16CStr::from_slice_truncate(&name_buf)
+                {
+                    name = cstr.to_string_lossy();
+                } // Else if getting the string failed or if there is no null terminator, do nothing with the name.
+
+                let mut color_value = 0i64;
+                if unsafe { list.getInt(ChannelContext::kChannelColorKey, &mut color_value) }
+                    == kResultOk
+                {
+                    color = Some(track_color_from_vst3_color(color_value as u32));
+                }
+
+                let track_info = TrackInfo::new(name, color);
+                *current_track_info = track_info.clone();
+
+                if let Some(editor) = self.inner.editor.borrow().as_ref() {
+                    editor.lock().track_info_updated(track_info);
+                }
+            });
+
+            kResultOk
+        }
     }
 }

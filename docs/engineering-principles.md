@@ -1,6 +1,6 @@
 # Audio DSP and plugin engineering principles
 
-These are the Oiko engineering rules for NicePlug Community and egui. They are design requirements and review criteria, not a claim that every future host or platform has already been tested. Baseline: NicePlug 0.3.0, nice-plug-egui 0.4.0, egui 0.36.1; use the checked lockfiles and the patch register for exact sources.
+These are the Oiko engineering rules for NicePlug Community and egui. They are design requirements and review criteria, not a claim that every future host or platform has already been tested. Baseline: NicePlug 0.4.0, nice-plug-egui 0.5.0, egui 0.36.1; use the checked lockfiles and the patch register for exact sources.
 
 ## Ownership and architecture
 
