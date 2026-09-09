@@ -334,7 +334,7 @@ fn motion_compensation_normalizes_each_shape_at_moderate_depth() {
         MotionShape::Scan,
         MotionShape::Notch,
         MotionShape::Saw,
-        MotionShape::Splash,
+        MotionShape::Sprinkle,
     ] {
         let config = MotionConfig {
             shape,
@@ -368,7 +368,7 @@ fn every_motion_shape_is_continuous_at_phase_wrap() {
         MotionShape::Scan,
         MotionShape::Notch,
         MotionShape::Saw,
-        MotionShape::Splash,
+        MotionShape::Sprinkle,
     ] {
         for frequency in [31.0, 440.0, 7_321.0, 19_000.0] {
             let config = |phase| MotionConfig {
@@ -382,42 +382,6 @@ fn every_motion_shape_is_continuous_at_phase_wrap() {
             assert!((before - after).abs() < 1.0e-3, "{shape:?} at {frequency}");
         }
     }
-}
-
-#[test]
-fn splash_ring_moves_upward_from_its_note() {
-    let at_impact = [SplashEvent {
-        center_hz: 440.0,
-        radius_octaves: 0.0,
-        strength: 1.0,
-    }];
-    assert!(splash_openness(440.0, 1.0, &at_impact) > 0.99);
-    assert!(splash_openness(880.0, 1.0, &at_impact) < 0.001);
-
-    let one_octave_out = [SplashEvent {
-        radius_octaves: 1.0,
-        ..at_impact[0]
-    }];
-    assert!(splash_openness(880.0, 1.0, &one_octave_out) > 0.8);
-    assert_eq!(splash_openness(220.0, 1.0, &one_octave_out), 0.0);
-    assert!(splash_openness(440.0, 1.0, &one_octave_out) < 0.001);
-}
-
-#[test]
-fn splash_is_neutral_without_an_active_event() {
-    assert_eq!(splash_attenuation_db(440.0, 60.0, 1.0, &[]), 0.0);
-    assert_eq!(
-        motion_attenuation_db(
-            440.0,
-            MotionConfig {
-                shape: MotionShape::Splash,
-                depth_db: 60.0,
-                phase: 0.5,
-                size_octaves: 1.0,
-            }
-        ),
-        0.0
-    );
 }
 
 #[test]

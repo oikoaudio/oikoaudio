@@ -1,5 +1,6 @@
 //! Host-independent mask generation for Oiko Weft.
 
+pub mod particles;
 /// One stored gain value for every bin in the maximum 16,384-sample RFFT.
 /// Smaller processing resolutions land on exact subsets of this master mask.
 pub mod processing;
@@ -52,15 +53,14 @@ pub enum MotionShape {
     Scan,
     Notch,
     Saw,
-    Splash,
+    Sprinkle,
+    Cloud,
 }
 
-/// A one-shot spectral ring triggered by a note-on event.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct SplashEvent {
-    pub center_hz: f32,
-    pub radius_octaves: f32,
-    pub strength: f32,
+impl MotionShape {
+    pub fn is_particle(self) -> bool {
+        matches!(self, Self::Sprinkle | Self::Cloud)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -581,46 +581,14 @@ pub fn motion_openness(frequency: f32, config: MotionConfig) -> f32 {
                 1.0 - smoothstep((cycle - RESET_START) / (1.0 - RESET_START))
             }
         }
-        // Splash is event-driven and is applied separately from the looping
+        // Sprinkle is event-driven and is applied separately from the looping
         // motion field. Its resting state must therefore be neutral.
-        MotionShape::Splash => 1.0,
+        MotionShape::Sprinkle | MotionShape::Cloud => 1.0,
     }
 }
 
 pub fn motion_attenuation_db(frequency: f32, config: MotionConfig) -> f32 {
     config.depth_db.max(0.0) * (1.0 - motion_openness(frequency, config))
-}
-
-/// Returns the strongest active one-shot ring at `frequency`, from 0 to 1.
-/// Distance is measured in octaves so a burst travels upward from the played
-/// note on the logarithmic frequency display.
-pub fn splash_openness(frequency: f32, size_octaves: f32, events: &[SplashEvent]) -> f32 {
-    if frequency < MIN_DISPLAY_FREQUENCY_HZ {
-        return 0.0;
-    }
-    let width = (size_octaves * 0.14).clamp(0.04, 0.7);
-    events.iter().fold(0.0_f32, |strongest, event| {
-        if event.center_hz < MIN_DISPLAY_FREQUENCY_HZ
-            || event.strength <= 0.0
-            || frequency < event.center_hz
-        {
-            return strongest;
-        }
-        let distance = (frequency / event.center_hz).log2();
-        let offset = (distance - event.radius_octaves) / width;
-        let ring = (-0.5 * offset * offset).exp();
-        let travel_decay = (-event.radius_octaves / 5.5).exp();
-        strongest.max(event.strength.clamp(0.0, 1.0) * travel_decay * ring)
-    })
-}
-
-pub fn splash_attenuation_db(
-    frequency: f32,
-    depth_db: f32,
-    size_octaves: f32,
-    events: &[SplashEvent],
-) -> f32 {
-    depth_db.max(0.0) * splash_openness(frequency, size_octaves, events)
 }
 
 /// Broadband normalization for the moving spectral field. Sampling uniformly

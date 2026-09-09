@@ -3,12 +3,11 @@ mod curve;
 mod parameters;
 use curve::transform_curve;
 use display_data::{ANALYZER_POINTS, AnalysisDisplay, display_max_frequency};
+use oiko_dsp::db_to_gain;
 use parameters::{
     COARSE_FFT_SIZE, DEFAULT_FFT_SIZE, FftQuality, MAX_FFT_SIZE, MAX_FREE_MOTION_RATE_HZ,
     MIN_FFT_SIZE, MotionDirection, ROUGH_FFT_SIZE, SpectralParams,
 };
-mod state;
-use oiko_dsp::{db_to_gain, note_frequency_with_tuning};
 #[cfg(test)]
 use spectral_dsp::processing::build_dual_synthesis_window;
 use spectral_dsp::processing::{PreparedSpectrum, smooth_mask_in_db, soften_spectral_edges};
@@ -16,6 +15,8 @@ mod capture;
 mod expression;
 #[cfg(test)]
 mod expression_tests;
+mod particle_adapter;
+mod state;
 use expression::{MidiExpression, VoiceExpression};
 mod curve_transfer;
 mod display_data;
@@ -30,7 +31,7 @@ use realfft::num_complex::Complex32;
 use realfft::{ComplexToReal, RealFftPlanner, RealToComplex};
 use spectral_dsp::{
     MANUAL_CURVE_MUTE_DB, MANUAL_MASK_POINTS, MIDI_NOTES, MaskConfig, MaskVoice, MotionConfig,
-    MotionShape, SplashEvent, build_mask_with_voices_precomputed, splash_attenuation_db,
+    build_mask_with_voices_precomputed,
 };
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -39,7 +40,6 @@ const OVERLAP_TIMES: usize = 4;
 const MOTION_RATE_FRACTION_OF_FRAME_RATE: f32 = 0.32;
 const MAX_VOICES: usize = 128;
 const MAX_MASK_VOICES: usize = MAX_VOICES + MIDI_NOTES;
-pub(crate) const MAX_SPLASH_EVENTS: usize = 24;
 const VIBRATO_RATE_HZ: f32 = 5.5;
 const VIBRATO_RANGE_SEMITONES: f32 = 0.5;
 const PINNED_NOTE_VELOCITY: f32 = 0.5;
@@ -57,6 +57,8 @@ fn effective_motion_rate_hz(requested_hz: f32, sample_rate: f32, fft_size: usize
 
 struct FftPlan {
     prepared: PreparedSpectrum,
+    particle_mask: spectral_dsp::particles::Mask,
+    particle_gains: Vec<f32>,
     forward_scratch: Vec<Complex32>,
     inverse_scratch: Vec<Complex32>,
     forward: Arc<dyn RealToComplex<f32>>,
@@ -102,31 +104,6 @@ impl VoiceState {
         expression: VoiceExpression::DEFAULT,
         vibrato: 0.0,
     };
-}
-
-#[derive(Clone, Copy)]
-struct SplashState {
-    active: bool,
-    center_hz: f32,
-    radius_octaves: f32,
-    strength: f32,
-}
-
-impl SplashState {
-    const EMPTY: Self = Self {
-        active: false,
-        center_hz: 0.0,
-        radius_octaves: 0.0,
-        strength: 0.0,
-    };
-
-    fn event(self) -> SplashEvent {
-        SplashEvent {
-            center_hz: self.center_hz,
-            radius_octaves: self.radius_octaves,
-            strength: if self.active { self.strength } else { 0.0 },
-        }
-    }
 }
 
 struct AudioSlice<'a, 'b> {
@@ -181,7 +158,7 @@ pub struct SpectralPlugin {
     base_curve_cache: [f32; MANUAL_MASK_POINTS],
     manual_curve_cache: [f32; MANUAL_MASK_POINTS],
     voices: [VoiceState; MAX_VOICES],
-    splash_states: [SplashState; MAX_SPLASH_EVENTS],
+    particles: particle_adapter::Adapter,
     mask_voices: [MaskVoice; MAX_MASK_VOICES],
     pinned_note_levels: [f32; MIDI_NOTES],
     note_levels: [f32; MIDI_NOTES],
@@ -236,7 +213,7 @@ impl Default for SpectralPlugin {
             base_curve_cache: [0.0; MANUAL_MASK_POINTS],
             manual_curve_cache: [0.0; MANUAL_MASK_POINTS],
             voices: [VoiceState::EMPTY; MAX_VOICES],
-            splash_states: [SplashState::EMPTY; MAX_SPLASH_EVENTS],
+            particles: particle_adapter::Adapter::new(48_000.0),
             mask_voices: [MaskVoice::default(); MAX_MASK_VOICES],
             pinned_note_levels: [0.0; MIDI_NOTES],
             note_levels: [0.0; MIDI_NOTES],
@@ -281,6 +258,10 @@ impl Plugin for SpectralPlugin {
     type Editor = HostCoordinateEditor<SpectralEditor>;
     type SysExMessage = ();
     type BackgroundTask = ();
+
+    fn validate_state(state: &PluginState) -> Result<(), String> {
+        state::validate(state)
+    }
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
@@ -345,6 +326,8 @@ impl Plugin for SpectralPlugin {
                 let forward = planner.plan_fft_forward(size);
                 let inverse = planner.plan_fft_inverse(size);
                 FftPlan {
+                    particle_mask: spectral_dsp::particles::Mask::new(size / 2 + 1),
+                    particle_gains: vec![1.0; size / 2 + 1],
                     prepared: PreparedSpectrum::new(
                         self.sample_rate,
                         window,
@@ -359,6 +342,7 @@ impl Plugin for SpectralPlugin {
             }),
         );
 
+        self.particles = particle_adapter::Adapter::new(self.sample_rate);
         self.quality = self.params.quality.value();
         self.resize_for_fft(self.quality.size());
         context.set_latency_samples(self.stft.latency_samples());
@@ -394,18 +378,34 @@ impl Plugin for SpectralPlugin {
         let (tempo_bpm, transport_position_beats) = {
             let transport = context.transport();
             (
-                transport.tempo.unwrap_or(120.0).clamp(1.0, 999.0) as f32,
+                transport
+                    .tempo
+                    .filter(|v| v.is_finite())
+                    .unwrap_or(self.particles.last_tempo as f64)
+                    .clamp(1.0, 999.0) as f32,
                 transport.pos_beats,
             )
         };
         self.analysis_display.store_tempo(tempo_bpm);
-
+        self.particles.last_tempo = tempo_bpm;
         let quality = self.params.quality.value();
         if quality != self.quality {
             self.quality = quality;
             self.resize_for_fft(quality.size());
             context.set_latency_samples(self.stft.latency_samples());
         }
+
+        self.configure_particles(
+            tempo_bpm,
+            context.transport().playing || transport_position_beats.is_none(),
+        );
+        self.particles.transport(
+            transport_position_beats,
+            context.transport().playing,
+            buffer.samples(),
+            self.sample_rate,
+            self.params.motion_sync.value(),
+        );
 
         let samples = buffer.samples();
         let hop = self.quality.size() / OVERLAP_TIMES;
@@ -429,6 +429,7 @@ impl Plugin for SpectralPlugin {
                 }
             }
             self.expression_event_count = 0;
+            self.update_particle_sources();
             if offset == samples {
                 break;
             }
@@ -438,6 +439,7 @@ impl Plugin for SpectralPlugin {
                 .min(offset + hop - self.hop_position)
                 .max(offset + 1);
             let elapsed = end - offset;
+            self.particles.engine.advance(elapsed);
             self.advance_expression_time(elapsed);
             self.flush_terminated(context, end.saturating_sub(1) as u32);
             self.midi_expression.resolve(
@@ -505,7 +507,7 @@ impl SpectralPlugin {
         let base_curve = &mut self.base_curve_cache;
         let manual_curve = &mut self.manual_curve_cache;
         let voices = &mut self.voices;
-        let splash_states = &mut self.splash_states;
+        let particles = &mut self.particles;
         let mask_voices = &mut self.mask_voices;
         let pinned_note_levels = &mut self.pinned_note_levels;
         let note_levels = &mut self.note_levels;
@@ -610,6 +612,17 @@ impl SpectralPlugin {
                         .rem_euclid(1.0);
                     let note_depth_db = params.note_depth_db.smoothed.previous_value();
                     let motion_depth_db = params.motion_depth_db.smoothed.previous_value();
+                    let motion_config = MotionConfig {
+                        shape: params.motion_shape.value().into(),
+                        depth_db: motion_depth_db,
+                        phase: displayed_phase,
+                        size_octaves: params.motion_size_octaves.value(),
+                    };
+                    let separate_motion = particles.begin_frame(
+                        motion_config,
+                        sample_rate / fft_size as f32,
+                        target_mask.len(),
+                    );
                     let mask_config = MaskConfig {
                         sample_rate,
                         fft_size,
@@ -619,10 +632,12 @@ impl SpectralPlugin {
                         partials: params.partials.value() as usize,
                         harmonic_rolloff_db_per_octave: params.harmonic_rolloff_db.value(),
                         motion: MotionConfig {
-                            shape: params.motion_shape.value().into(),
-                            depth_db: motion_depth_db,
-                            phase: displayed_phase,
-                            size_octaves: params.motion_size_octaves.value(),
+                            depth_db: if separate_motion {
+                                0.0
+                            } else {
+                                motion_depth_db
+                            },
+                            ..motion_config
                         },
                     };
                     if num_channels == 2 {
@@ -643,31 +658,33 @@ impl SpectralPlugin {
                             mask_workspace,
                         );
                     }
-                    let motion_shape = params.motion_shape.value();
-                    let splash_events = if motion_shape == SpectralMotionShape::Splash {
-                        advance_splashes(splash_states, frame_seconds, effective_motion_rate_hz);
-                        std::array::from_fn(|index| splash_states[index].event())
-                    } else {
-                        splash_states.fill(SplashState::EMPTY);
-                        [SplashEvent::default(); MAX_SPLASH_EVENTS]
-                    };
-                    if motion_shape == SpectralMotionShape::Splash && motion_depth_db > 0.001 {
-                        let bin_hz = sample_rate / fft_size as f32;
-                        let size_octaves = params.motion_size_octaves.value();
-                        for (bin, gain) in target_mask.iter_mut().enumerate().skip(1) {
-                            let attenuation = splash_attenuation_db(
-                                bin as f32 * bin_hz,
-                                motion_depth_db,
-                                size_octaves,
-                                &splash_events,
-                            );
-                            let attenuation_gain = db_to_gain(-attenuation);
-                            *gain *= attenuation_gain;
-                            if num_channels == 2 {
-                                target_mask_right[bin] *= attenuation_gain;
-                            }
-                        }
-                    }
+                    let particle_frame = particles
+                        .engine
+                        .frame(sample_rate / fft_size as f32, frame_seconds);
+                    plan.particle_mask.gains(
+                        &particle_frame,
+                        motion_depth_db,
+                        mask_workspace,
+                        &mut plan.particle_gains,
+                    );
+                    particles.apply(
+                        motion_config,
+                        frame_seconds,
+                        sample_rate / fft_size as f32,
+                        &plan.particle_gains,
+                        target_mask,
+                        if num_channels == 2 {
+                            Some(target_mask_right)
+                        } else {
+                            None
+                        },
+                    );
+                    particles.publish(
+                        analysis_display,
+                        frame_samples as usize,
+                        target_mask.len(),
+                        sample_rate / fft_size as f32,
+                    );
                     if frame_smooth_enabled {
                         soften_spectral_edges(target_mask, softened_mask);
                         smooth_mask_in_db(mask, softened_mask, frame_seconds);
@@ -683,7 +700,6 @@ impl SpectralPlugin {
                     }
                     analysis_display.store_notes(displayed_note_levels, note_tunings, note_timbres);
                     analysis_display.store_motion_phase(displayed_phase);
-                    analysis_display.store_splashes(&splash_events);
                 }
 
                 let (analysis_window, analysis_gain, coherent_gain) = if frame_smooth_enabled {
@@ -844,7 +860,6 @@ impl SpectralPlugin {
                 velocity,
                 ..
             } if channel < 16 && note < 128 && velocity.is_finite() => {
-                self.trigger_splash(channel, note, velocity);
                 self.start_voice(voice_id, channel, note, velocity);
             }
             NoteEvent::NoteOff {
@@ -1026,6 +1041,8 @@ impl SpectralPlugin {
             self.terminated[self.terminated_count] = self.voices[index];
             self.terminated_count += 1;
         }
+        self.particles.engine.retire_source(index);
+        self.particles.pending[index] = Some(self.particles.engine.reserve_trigger());
         self.voices[index] = VoiceState {
             occupied: true,
             held: true,
@@ -1034,39 +1051,6 @@ impl SpectralPlugin {
             note,
             velocity: velocity.clamp(0.0, 1.0),
             ..VoiceState::EMPTY
-        };
-    }
-
-    fn trigger_splash(&mut self, channel: u8, note: u8, velocity: f32) {
-        if self.params.motion_shape.value() != SpectralMotionShape::Splash {
-            return;
-        }
-        let tuning = self
-            .midi_expression
-            .bend(channel, self.params.pitch_bend_range.value() as f32)
-            + self.tuning.offset(note as usize);
-        if !self.tuning.mapped[note as usize] {
-            return;
-        }
-        let index = self
-            .splash_states
-            .iter()
-            .position(|splash| !splash.active)
-            .unwrap_or_else(|| {
-                self.splash_states
-                    .iter()
-                    .enumerate()
-                    .max_by(|(_, left), (_, right)| {
-                        left.radius_octaves.total_cmp(&right.radius_octaves)
-                    })
-                    .map(|(index, _)| index)
-                    .unwrap_or(0)
-            });
-        self.splash_states[index] = SplashState {
-            active: true,
-            center_hz: note_frequency_with_tuning(note, tuning),
-            radius_octaves: 0.0,
-            strength: velocity.clamp(0.0, 1.0),
         };
     }
 
@@ -1095,10 +1079,12 @@ impl SpectralPlugin {
     }
 
     fn choke_voice(&mut self, voice_id: Option<i32>, channel: u8, note: u8) {
-        for voice in &mut self.voices {
+        for (index, voice) in self.voices.iter_mut().enumerate() {
             if voice_matches(voice, voice_id, channel, note) {
                 self.terminated[self.terminated_count] = *voice;
                 self.terminated_count += 1;
+                self.particles.engine.retire_source(index);
+                self.particles.pending[index] = None;
                 *voice = VoiceState::EMPTY;
             }
         }
@@ -1106,7 +1092,7 @@ impl SpectralPlugin {
 
     fn clear_notes(&mut self) {
         self.voices.fill(VoiceState::EMPTY);
-        self.splash_states.fill(SplashState::EMPTY);
+        self.particles.reset();
         self.mask_voices.fill(MaskVoice::default());
         self.pinned_note_levels.fill(0.0);
         self.note_levels.fill(0.0);
@@ -1120,18 +1106,6 @@ impl SpectralPlugin {
         self.expression_event_count = 0;
         self.channel_sustain.fill(false);
         self.analysis_display.clear();
-    }
-}
-
-fn advance_splashes(splashes: &mut [SplashState], elapsed_seconds: f32, rate_hz: f32) {
-    // Four octaves per cycle makes the existing Rate control feel useful for
-    // a one-shot gesture without tying the burst to the looping phase.
-    let travel = elapsed_seconds * rate_hz.max(0.01) * 4.0;
-    for splash in splashes.iter_mut().filter(|splash| splash.active) {
-        splash.radius_octaves += travel;
-        if splash.radius_octaves > 11.0 {
-            *splash = SplashState::EMPTY;
-        }
     }
 }
 

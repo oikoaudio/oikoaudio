@@ -1,13 +1,45 @@
 //! Bounded atomic audio-to-UI display data. No graphics or host dependencies.
 //! Scalar metering is approximate; it must never drive sound processing.
-use crate::MAX_SPLASH_EVENTS;
-use spectral_dsp::{MANUAL_CURVE_MUTE_DB, MIDI_NOTES, MIN_DISPLAY_FREQUENCY_HZ, SplashEvent};
-use std::sync::atomic::{AtomicU32, Ordering};
-pub(crate) const ANALYZER_POINTS: usize = 256;
 
 const MAX_DISPLAY_FREQUENCY_HZ: f32 = 22_000.0;
 pub(crate) fn display_max_frequency(sample_rate: f32) -> f32 {
     (sample_rate * 0.5).clamp(MIN_DISPLAY_FREQUENCY_HZ, MAX_DISPLAY_FREQUENCY_HZ)
+}
+
+use spectral_dsp::{MANUAL_CURVE_MUTE_DB, MIDI_NOTES, MIN_DISPLAY_FREQUENCY_HZ};
+use std::sync::atomic::{AtomicU32, Ordering};
+pub(crate) const ANALYZER_POINTS: usize = 256;
+const PARTICLE_BINS: usize = crate::parameters::MAX_FFT_SIZE / 2 + 1;
+/// Coherent decimated copy of the actual motion multiplier, including mode
+/// crossfades and smoothed Depth. UI interpolation does not add FFT resolution.
+pub(crate) struct ParticleMask {
+    gains: [f32; PARTICLE_BINS],
+    bins: usize,
+    bin_hz: f32,
+    pub active: bool,
+}
+impl Default for ParticleMask {
+    fn default() -> Self {
+        Self {
+            gains: [1.0; PARTICLE_BINS],
+            bins: 0,
+            bin_hz: 1.0,
+            active: false,
+        }
+    }
+}
+impl ParticleMask {
+    pub fn attenuation_db(&self, frequency: f32) -> f32 {
+        if self.bins == 0 {
+            return 0.0;
+        }
+        let position = (frequency / self.bin_hz).clamp(0.0, (self.bins - 1) as f32);
+        let left = position as usize;
+        let right = (left + 1).min(self.bins - 1);
+        let gain =
+            self.gains[left] + (self.gains[right] - self.gains[left]) * (position - left as f32);
+        -20.0 * gain.max(1e-9).log10()
+    }
 }
 
 pub(crate) struct AnalysisDisplay {
@@ -21,9 +53,8 @@ pub(crate) struct AnalysisDisplay {
     pub(crate) sample_rate: AtomicU32,
     pub(crate) tempo_bpm: AtomicU32,
     pub(crate) motion_phase: AtomicU32,
-    pub(crate) splash_centers: [AtomicU32; MAX_SPLASH_EVENTS],
-    pub(crate) splash_radii: [AtomicU32; MAX_SPLASH_EVENTS],
-    pub(crate) splash_strengths: [AtomicU32; MAX_SPLASH_EVENTS],
+    particle_generation: AtomicU32,
+    particle_words: [AtomicU32; PARTICLE_BINS + 3],
 }
 
 impl Default for AnalysisDisplay {
@@ -40,9 +71,8 @@ impl Default for AnalysisDisplay {
             sample_rate: AtomicU32::new(48_000.0_f32.to_bits()),
             tempo_bpm: AtomicU32::new(120.0_f32.to_bits()),
             motion_phase: AtomicU32::new(0.0_f32.to_bits()),
-            splash_centers: [const { AtomicU32::new(0.0_f32.to_bits()) }; MAX_SPLASH_EVENTS],
-            splash_radii: [const { AtomicU32::new(0.0_f32.to_bits()) }; MAX_SPLASH_EVENTS],
-            splash_strengths: [const { AtomicU32::new(0.0_f32.to_bits()) }; MAX_SPLASH_EVENTS],
+            particle_generation: AtomicU32::new(0),
+            particle_words: [const { AtomicU32::new(0) }; PARTICLE_BINS + 3],
         }
     }
 }
@@ -96,12 +126,17 @@ impl AnalysisDisplay {
         self.motion_phase.store(phase.to_bits(), Ordering::Release);
     }
 
-    pub(crate) fn store_splashes(&self, splashes: &[SplashEvent; MAX_SPLASH_EVENTS]) {
-        for (index, splash) in splashes.iter().enumerate() {
-            self.splash_centers[index].store(splash.center_hz.to_bits(), Ordering::Release);
-            self.splash_radii[index].store(splash.radius_octaves.to_bits(), Ordering::Release);
-            self.splash_strengths[index].store(splash.strength.to_bits(), Ordering::Release);
+    /// Single audio writer, coherent seqlock observation. Publication never
+    /// waits or retries; UI rejects an overlapping read and retains its frame.
+    pub(crate) fn store_particles(&self, gains: &[f32], bin_hz: f32, active: bool) {
+        self.particle_generation.fetch_add(1, Ordering::SeqCst);
+        for (word, gain) in self.particle_words.iter().zip(gains) {
+            word.store(gain.to_bits(), Ordering::SeqCst);
         }
+        self.particle_words[PARTICLE_BINS].store(gains.len() as u32, Ordering::SeqCst);
+        self.particle_words[PARTICLE_BINS + 1].store(bin_hz.to_bits(), Ordering::SeqCst);
+        self.particle_words[PARTICLE_BINS + 2].store(u32::from(active), Ordering::SeqCst);
+        self.particle_generation.fetch_add(1, Ordering::SeqCst);
     }
 
     pub(crate) fn clear(&self) {
@@ -120,11 +155,7 @@ impl AnalysisDisplay {
         }
         self.motion_phase
             .store(0.0_f32.to_bits(), Ordering::Release);
-        for index in 0..MAX_SPLASH_EVENTS {
-            self.splash_centers[index].store(0.0_f32.to_bits(), Ordering::Release);
-            self.splash_radii[index].store(0.0_f32.to_bits(), Ordering::Release);
-            self.splash_strengths[index].store(0.0_f32.to_bits(), Ordering::Release);
-        }
+        self.store_particles(&[], 1.0, false);
     }
 
     pub(crate) fn note_level(&self, note: usize) -> f32 {
@@ -151,11 +182,29 @@ impl AnalysisDisplay {
         f32::from_bits(self.motion_phase.load(Ordering::Acquire))
     }
 
-    pub(crate) fn splashes(&self) -> [SplashEvent; MAX_SPLASH_EVENTS] {
-        std::array::from_fn(|index| SplashEvent {
-            center_hz: f32::from_bits(self.splash_centers[index].load(Ordering::Acquire)),
-            radius_octaves: f32::from_bits(self.splash_radii[index].load(Ordering::Acquire)),
-            strength: f32::from_bits(self.splash_strengths[index].load(Ordering::Acquire)),
-        })
+    pub(crate) fn read_particles(&self, output: &mut ParticleMask) {
+        let generation = self.particle_generation.load(Ordering::SeqCst);
+        if generation & 1 != 0 {
+            return;
+        }
+        let mut candidate = ParticleMask {
+            bins: (self.particle_words[PARTICLE_BINS].load(Ordering::SeqCst) as usize)
+                .min(PARTICLE_BINS),
+            bin_hz: f32::from_bits(self.particle_words[PARTICLE_BINS + 1].load(Ordering::SeqCst)),
+            active: self.particle_words[PARTICLE_BINS + 2].load(Ordering::SeqCst) != 0,
+            ..ParticleMask::default()
+        };
+        for (gain, word) in candidate.gains[..candidate.bins]
+            .iter_mut()
+            .zip(&self.particle_words)
+        {
+            *gain = f32::from_bits(word.load(Ordering::SeqCst));
+        }
+        if generation == self.particle_generation.load(Ordering::SeqCst) {
+            *output = candidate;
+        }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -1,5 +1,10 @@
+//! State preflight runs before the wrapper mutates any live parameters/fields.
+//! Parsing and parameter metadata allocation belong to host state loading, not
+//! the process/reset paths. Missing historical fields keep existing defaults.
 use crate::curve::CURVE_TRANSFORM_STORAGE_LIMIT_DB;
+use crate::parameters::SpectralParams;
 use nice_plug::params::persist::PersistentField;
+use nice_plug::prelude::{Params, PluginState};
 use spectral_dsp::{MANUAL_CURVE_MUTE_DB, MANUAL_MASK_POINTS, MIDI_NOTES};
 use std::sync::{
     Arc,
@@ -7,6 +12,57 @@ use std::sync::{
 };
 
 pub(crate) type UiScaleState = oiko_plugin::UiScaleState<125>;
+use nice_plug::params::{internals::ParamPtr, persist::deserialize_field};
+use nice_plug::plugin::ParamValue;
+
+pub(super) fn validate(state: &PluginState) -> Result<(), String> {
+    let defaults = SpectralParams::default();
+    for (id, parameter, _) in defaults.param_map() {
+        let Some(value) = state.params.get(&id) else {
+            continue;
+        };
+        // All pointers are owned by `defaults`, which outlives this entire loop.
+        let valid = unsafe {
+            match (parameter, value) {
+                (ParamPtr::FloatParam(p), ParamValue::F32(v)) => {
+                    v.is_finite() && ((*p).preview_plain(0.0)..=(*p).preview_plain(1.0)).contains(v)
+                }
+                (ParamPtr::IntParam(p), ParamValue::I32(v)) => {
+                    ((*p).preview_plain(0.0)..=(*p).preview_plain(1.0)).contains(v)
+                }
+                (ParamPtr::BoolParam(_), ParamValue::Bool(_)) => true,
+                (ParamPtr::EnumParam(p), ParamValue::I32(v)) => {
+                    *v >= 0 && (*v as usize) < (*p).len()
+                }
+                (ParamPtr::EnumParam(p), ParamValue::String(v)) => (*p).set_from_id(v),
+                _ => false,
+            }
+        };
+        if !valid {
+            return Err(format!("Invalid Weft parameter: {id}"));
+        }
+    }
+    for id in ["manual-curve-v1", "pinned-notes-v1"] {
+        if let Some(json) = state.fields.get(id) {
+            let values: Vec<f32> =
+                deserialize_field(json).map_err(|_| format!("Invalid Weft field: {id}"))?;
+            if values.iter().any(|v| !v.is_finite()) {
+                return Err(format!("Nonfinite Weft field: {id}"));
+            }
+        }
+    }
+    for id in ["ui-scale-v1", "spectrum-range-v1"] {
+        if let Some(json) = state.fields.get(id) {
+            let value: f32 =
+                deserialize_field(json).map_err(|_| format!("Invalid Weft field: {id}"))?;
+            if !value.is_finite() {
+                return Err(format!("Nonfinite Weft field: {id}"));
+            }
+        }
+    }
+    Ok(())
+}
+
 #[derive(Clone)]
 pub(crate) struct CurveState {
     points: Arc<[AtomicU32; MANUAL_MASK_POINTS]>,
@@ -259,3 +315,6 @@ impl<'a> PersistentField<'a, f32> for SpectrumRangeState {
         f(&self.get())
     }
 }
+
+#[cfg(test)]
+mod tests;

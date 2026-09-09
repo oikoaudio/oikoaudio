@@ -75,6 +75,14 @@ fn process(
     samples: usize,
 ) -> [Vec<f32>; 2] {
     context.transport.pos_beats = Some(start as f64 / 24_000.0);
+    process_current(plugin, context, start, samples)
+}
+fn process_current(
+    plugin: &mut SpectralPlugin,
+    context: &mut Context,
+    start: usize,
+    samples: usize,
+) -> [Vec<f32>; 2] {
     let mut audio = std::array::from_fn(|_| {
         (start..start + samples)
             .map(|sample| (sample as f32 * 0.061).sin() * 0.1)
@@ -555,3 +563,6 @@ fn mpe_configuration_resets_changed_channels_and_member_ranges_are_shared() {
     rpn(&mut p, 0, 6, 0);
     assert_eq!(p.midi_expression.master_for(0), Some(15));
 }
+
+#[path = "particle_tests.rs"]
+mod particle_tests;

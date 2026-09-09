@@ -66,7 +66,7 @@ pub(super) fn fixed_motion_rate_parameter(
     sample_rate: f32,
     fft_size: usize,
     setter: &TrackedParamSetter<'_>,
-    _help: &str,
+    help: &str,
 ) {
     let (enabled, accent) = style;
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 38.0), Sense::hover());
@@ -209,7 +209,8 @@ pub(super) fn fixed_motion_rate_parameter(
                 "Motion Division",
                 division,
                 setter,
-            );
+            )
+            .on_hover_text(help);
         } else {
             compact_numeric_value(
                 ui,
@@ -220,7 +221,8 @@ pub(super) fn fixed_motion_rate_parameter(
                 None,
                 free_rate,
                 setter,
-            );
+            )
+            .on_hover_text(help);
         }
     });
 }
@@ -265,7 +267,7 @@ pub(super) fn fixed_motion_phase_size_parameter(
                     None,
                     phase,
                     setter,
-                );
+                ).on_hover_text("Offset the repeating motion reference. For particles, shifts birth opportunities while note-on triggers keep their timing.");
             });
             ui.vertical(|ui| {
                 ui.set_width(field_width);
@@ -284,7 +286,7 @@ pub(super) fn fixed_motion_phase_size_parameter(
                     None,
                     size,
                     setter,
-                );
+                ).on_hover_text("Spectral width in octaves. Larger values broaden particle windows and lengthen Cloud envelopes. Sprinkle timing comes from Note Control Attack and Release; Partials and Rolloff shape its harmonic choices.");
             });
         });
     });
@@ -300,7 +302,7 @@ pub(super) fn fixed_envelope_parameter(
     release: &FloatParam,
     intrinsic_transition_ms: f32,
     setter: &TrackedParamSetter<'_>,
-    _help: &str,
+    help: &str,
 ) {
     let (enabled, accent) = style;
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 38.0), Sense::hover());
@@ -313,54 +315,57 @@ pub(super) fn fixed_envelope_parameter(
     child.set_clip_rect(rect);
     child.set_width(width);
     child.set_max_width(width);
-    child.add_enabled_ui(enabled, |ui| {
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 10.0;
-            let field_width = (width - 10.0) * 0.5;
-            ui.vertical(|ui| {
-                ui.set_width(field_width);
-                ui.label(
-                    egui::RichText::new("ATTACK")
-                        .small()
-                        .strong()
-                        .color(ui.visuals().weak_text_color()),
-                );
-                compact_numeric_value(
-                    ui,
-                    Vec2::new(field_width, 18.0),
-                    accent,
-                    "Note Attack",
-                    None,
-                    Some(format_effective_note_time(
-                        intrinsic_transition_ms + attack.value(),
-                    )),
-                    attack,
-                    setter,
-                );
+    child
+        .add_enabled_ui(enabled, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 10.0;
+                let field_width = (width - 10.0) * 0.5;
+                ui.vertical(|ui| {
+                    ui.set_width(field_width);
+                    ui.label(
+                        egui::RichText::new("ATTACK")
+                            .small()
+                            .strong()
+                            .color(ui.visuals().weak_text_color()),
+                    );
+                    compact_numeric_value(
+                        ui,
+                        Vec2::new(field_width, 18.0),
+                        accent,
+                        "Note Attack",
+                        None,
+                        Some(format_effective_note_time(
+                            intrinsic_transition_ms + attack.value(),
+                        )),
+                        attack,
+                        setter,
+                    );
+                });
+                ui.vertical(|ui| {
+                    ui.set_width(field_width);
+                    ui.label(
+                        egui::RichText::new("RELEASE")
+                            .small()
+                            .strong()
+                            .color(ui.visuals().weak_text_color()),
+                    );
+                    compact_numeric_value(
+                        ui,
+                        Vec2::new(field_width, 18.0),
+                        accent,
+                        "Note Release",
+                        None,
+                        Some(format_effective_note_time(
+                            intrinsic_transition_ms + release.value(),
+                        )),
+                        release,
+                        setter,
+                    );
+                });
             });
-            ui.vertical(|ui| {
-                ui.set_width(field_width);
-                ui.label(
-                    egui::RichText::new("RELEASE")
-                        .small()
-                        .strong()
-                        .color(ui.visuals().weak_text_color()),
-                );
-                compact_numeric_value(
-                    ui,
-                    Vec2::new(field_width, 18.0),
-                    accent,
-                    "Note Release",
-                    None,
-                    Some(format_effective_note_time(
-                        intrinsic_transition_ms + release.value(),
-                    )),
-                    release,
-                    setter,
-                );
-            });
-        });
-    });
+        })
+        .response
+        .on_hover_text(help);
 }
 
 pub(super) fn format_effective_note_time(milliseconds: f32) -> String {
@@ -494,7 +499,7 @@ pub(super) fn fixed_step_parameter<P: Param>(
     label: &str,
     param: &P,
     setter: &TrackedParamSetter<'_>,
-    _help: &str,
+    help: &str,
 ) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 38.0), Sense::hover());
     let mut child = ui.new_child(
@@ -513,7 +518,7 @@ pub(super) fn fixed_step_parameter<P: Param>(
                 .strong()
                 .color(ui.visuals().weak_text_color()),
         );
-        step_value(ui, Vec2::new(width, 18.0), label, param, setter);
+        step_value(ui, Vec2::new(width, 18.0), label, param, setter).on_hover_text(help);
     });
 }
 

@@ -68,6 +68,7 @@ pub struct SpectralEditor {
     spectrum_range_menu_open: bool,
     last_spectrum_range_db: f32,
     pinned_note_drag_value: Option<bool>,
+    particle_frame: crate::display_data::ParticleMask,
     orange_motion_trail: LineTrail,
     blue_motion_trail: LineTrail,
     visual_motion_phase: VisualMotionPhase,
@@ -110,6 +111,7 @@ impl SpectralEditor {
             spectrum_range_menu_open: false,
             last_spectrum_range_db,
             pinned_note_drag_value: None,
+            particle_frame: crate::display_data::ParticleMask::default(),
             orange_motion_trail: LineTrail::default(),
             blue_motion_trail: LineTrail::default(),
             visual_motion_phase: VisualMotionPhase::default(),
@@ -327,7 +329,10 @@ impl SpectralEditor {
                         phase: visual_motion_phase,
                         size_octaves: self.params.motion_size_octaves.value(),
                     },
-                    splashes: self.display.splashes(),
+                    particles: {
+                        self.display.read_particles(&mut self.particle_frame);
+                        &self.particle_frame
+                    },
                     curve_depth_percent: self.params.curve_depth_percent.value(),
                     curve_tilt_db_per_octave: self.params.curve_tilt_db_per_octave.value(),
                     curve_shift_semitones: self.params.curve_shift_semitones.value(),
@@ -573,7 +578,7 @@ impl SpectralEditor {
                         "SHAPE",
                         &self.params.motion_shape,
                         &setter,
-                        "Ripple, harmonic comb, drift, scan, notch, softened saw, or a note-triggered splash.",
+                        "Ripple, harmonic comb, drift, scan, notch, softened saw, plucked Sprinkle gestures or swelling Cloud envelopes. Both run freely without notes and follow live or pinned pitches when present. Low particles are quieter; draw on the spectrum to control the bass.",
                     );
                     fixed_motion_rate_parameter(
                         ui,
@@ -586,7 +591,7 @@ impl SpectralEditor {
                         self.display.sample_rate(),
                         self.params.quality.value().size(),
                         &setter,
-                        "How quickly the spectral field travels.",
+                        "Motion speed. Sprinkle shares this pace across interwoven groups and rests; faster rates increase activity and overlap.",
                     );
                     fixed_step_parameter(
                         ui,
@@ -595,7 +600,7 @@ impl SpectralEditor {
                         "DIRECTION",
                         &self.params.motion_direction,
                         &setter,
-                        "Move forward, reverse, or alternate smoothly between directions.",
+                        "Forward, reverse, or alternating motion for looping shapes. Sprinkle biases octave choices. Cloud selects rounded, reverse-swell, or alternating envelopes; centers stay in place.",
                     );
                     fixed_motion_phase_size_parameter(
                         ui,
@@ -645,7 +650,7 @@ impl SpectralEditor {
                         "PARTIALS",
                         &self.params.partials,
                         &setter,
-                        "Number of integer harmonics opened above each held MIDI note.",
+                        "Number of harmonics in the note mask. Also sets Sprinkle’s available harmonics, with or without notes; each event chooses mostly one, occasionally two or three.",
                     );
                     fixed_parameter(
                         ui,
@@ -654,7 +659,7 @@ impl SpectralEditor {
                         "PARTIAL ROLLOFF",
                         &self.params.harmonic_rolloff_db,
                         &setter,
-                        "How much higher partials fade per octave.",
+                        "How much higher note-mask partials fade per octave. Also makes higher Sprinkle harmonics less likely to be chosen.",
                     );
                     fixed_envelope_parameter(
                         ui,
@@ -665,7 +670,7 @@ impl SpectralEditor {
                         &self.params.note_release_ms,
                         intrinsic_note_transition_ms,
                         &setter,
-                        "Estimated audible Attack and Release, including the current Resolution's intrinsic STFT handover. The parameters themselves add smoothing beyond that minimum.",
+                        "Attack and Release shape note regions and each new Sprinkle, including without MIDI or at zero Note Depth. Sprinkle decays after its peak independently of note-off. Display includes estimated STFT handover; very short sprinkles have a resolution-dependent minimum.",
                     );
                 });
             });

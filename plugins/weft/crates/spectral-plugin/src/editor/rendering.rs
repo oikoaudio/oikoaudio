@@ -1,20 +1,14 @@
 //! Spectrum, curves, note overlays and plot coordinates.
 use super::curve::{CurveTransformZone, SOFT_PENCIL_RADIUS_PX};
-use crate::MAX_SPLASH_EVENTS;
 use crate::curve::transformed_curve_db;
 use crate::display_data::{ANALYZER_POINTS, AnalysisDisplay, display_max_frequency};
 use egui::{Align2, Color32, FontId, Pos2, Rect, Stroke, StrokeKind, Vec2};
 use oiko_dsp::{db_to_gain, note_frequency_with_tuning};
 use oiko_ui::theme::Palette;
-use spectral_dsp::MANUAL_CURVE_MUTE_DB;
-use spectral_dsp::MANUAL_MASK_POINTS;
-use spectral_dsp::MIDI_NOTES;
-use spectral_dsp::MIN_DISPLAY_FREQUENCY_HZ;
-use spectral_dsp::MotionConfig;
-use spectral_dsp::MotionShape;
-use spectral_dsp::SplashEvent;
-use spectral_dsp::motion_attenuation_db;
-use spectral_dsp::splash_attenuation_db;
+use spectral_dsp::{
+    MANUAL_CURVE_MUTE_DB, MANUAL_MASK_POINTS, MIDI_NOTES, MIN_DISPLAY_FREQUENCY_HZ, MotionConfig,
+    motion_attenuation_db,
+};
 use std::f32::consts::PI;
 use std::time::{Duration, Instant};
 
@@ -155,7 +149,7 @@ pub(super) struct PlotContext<'a> {
     pub(super) partial_rolloff_db: f32,
     pub(super) display_range_db: f32,
     pub(super) motion: MotionConfig,
-    pub(super) splashes: [SplashEvent; MAX_SPLASH_EVENTS],
+    pub(super) particles: &'a crate::display_data::ParticleMask,
     pub(super) curve_depth_percent: f32,
     pub(super) curve_tilt_db_per_octave: f32,
     pub(super) curve_shift_semitones: f32,
@@ -308,17 +302,11 @@ pub(super) fn motion_curve_point(
 }
 
 pub(super) fn displayed_motion_attenuation_db(frequency: f32, context: &PlotContext<'_>) -> f32 {
-    let splash = if context.motion.shape == MotionShape::Splash {
-        splash_attenuation_db(
-            frequency,
-            context.motion.depth_db,
-            context.motion.size_octaves,
-            &context.splashes,
-        )
+    if context.particles.active {
+        context.particles.attenuation_db(frequency)
     } else {
-        0.0
-    };
-    motion_attenuation_db(frequency, context.motion) + splash
+        motion_attenuation_db(frequency, context.motion)
+    }
 }
 
 pub(super) fn draw_motion_outline(

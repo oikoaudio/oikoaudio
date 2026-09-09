@@ -56,7 +56,9 @@ pub(crate) enum SpectralMotionShape {
     Scan,
     Notch,
     Saw,
-    Splash,
+    // Keep original state indices 0..=6; Splash was stored as integer 6.
+    Sprinkle,
+    Cloud,
 }
 
 impl From<SpectralMotionShape> for MotionShape {
@@ -68,7 +70,8 @@ impl From<SpectralMotionShape> for MotionShape {
             SpectralMotionShape::Scan => Self::Scan,
             SpectralMotionShape::Notch => Self::Notch,
             SpectralMotionShape::Saw => Self::Saw,
-            SpectralMotionShape::Splash => Self::Splash,
+            SpectralMotionShape::Sprinkle => Self::Sprinkle,
+            SpectralMotionShape::Cloud => Self::Cloud,
         }
     }
 }
