@@ -182,6 +182,14 @@ impl NiceEguiApp for WowEditor {
             let setter = self.gui_context.as_ref().unwrap().param_setter();
             self.gestures.finish(&*self.params, &setter);
         }
+        if let Some(scale) = oiko_ui::resize_grip::show(
+            root_ui,
+            Vec2::new(EDITOR_WIDTH, EDITOR_HEIGHT),
+            self.params.ui_scale.get(),
+        ) {
+            self.params.ui_scale.set(scale);
+            request_settled_scale(root_ui.ctx(), scale);
+        }
     }
 
     fn editor_closed(&mut self) {
@@ -431,7 +439,10 @@ fn footer(
     );
     let height = 20.0;
     let seed_rect = Rect::from_min_size(
-        Pos2::new(rect.right() - 106.0, rect.center().y - height * 0.5),
+        Pos2::new(
+            rect.right() - 90.0 - oiko_ui::resize_grip::RESERVED_WIDTH,
+            rect.center().y - height * 0.5,
+        ),
         Vec2::new(90.0, height),
     );
     let range_rect = Rect::from_center_size(

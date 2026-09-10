@@ -6,3 +6,5 @@ pub mod typography;
 pub mod chrome;
 pub mod layout;
 pub mod theme;
+
+pub mod resize_grip;

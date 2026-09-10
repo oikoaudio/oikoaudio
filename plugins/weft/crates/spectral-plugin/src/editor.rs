@@ -138,6 +138,14 @@ impl NiceEguiApp for SpectralEditor {
             root_ui.ctx().text_edit_focused(),
         ));
         self.draw_ui(root_ui);
+        if let Some(scale) = oiko_ui::resize_grip::show(
+            root_ui,
+            Vec2::new(EDITOR_WIDTH, EDITOR_HEIGHT),
+            self.params.ui_scale.get(),
+        ) {
+            self.params.ui_scale.set(scale);
+            request_settled_scale(root_ui.ctx(), scale);
+        }
     }
 
     fn editor_closed(&mut self) {

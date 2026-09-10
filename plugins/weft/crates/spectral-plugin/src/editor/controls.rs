@@ -673,7 +673,8 @@ pub(super) fn global_footer(
     let height = 20.0;
     let inset = 10.0;
     let gap = CONTROL_GAP;
-    let control_width = (rect.width() - inset * 2.0 - gap * 4.0) / 5.0;
+    let control_width =
+        (rect.width() - inset - oiko_ui::resize_grip::RESERVED_WIDTH - gap * 4.0) / 5.0;
     let column_x = |index: usize| rect.left() + inset + index as f32 * (control_width + gap);
     let control_rect = |column: usize| {
         Rect::from_min_max(

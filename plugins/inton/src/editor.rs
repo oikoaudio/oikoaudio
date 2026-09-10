@@ -631,8 +631,13 @@ impl Editor {
                 self.set_parameter(id, v);
             }
         }
-        let connection =
-            egui::Rect::from_center_size(pos2(rect.right() - 62., center), vec2(124., 23.));
+        let connection = egui::Rect::from_center_size(
+            pos2(
+                rect.right() - 62. - oiko_ui::resize_grip::RESERVED_WIDTH,
+                center,
+            ),
+            vec2(124., 23.),
+        );
         let mut child = ui.new_child(
             egui::UiBuilder::new()
                 .id_salt("footer-connection")
@@ -1287,6 +1292,19 @@ impl NiceEguiApp for Editor {
         }
         if !ui.input(|input| input.pointer.any_down()) || !ui.input(|input| input.focused) {
             self.host.finish_gestures();
+        }
+        let canvas = vec2(
+            self.preferences.view.width() as f32,
+            self.preferences.view.height() as f32,
+        );
+        if let Some(scale) =
+            oiko_ui::resize_grip::show(ui, canvas, self.preferences.view.scale as f32)
+        {
+            self.set_view(ViewPreferences {
+                scale: f64::from(scale),
+                ..self.preferences.view
+            });
+            oiko_ui::scale::request_scale(ui.ctx(), scale, canvas);
         }
     }
 }
