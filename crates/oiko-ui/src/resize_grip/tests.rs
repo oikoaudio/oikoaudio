@@ -24,6 +24,9 @@ impl Harness {
         };
         harness.frame(vec![]);
         harness.frame(vec![]);
+        // Initial zoom settles after the first pass. Response lookup uses the
+        // previous pass, so let the grip's final geometry reach that lookup.
+        harness.frame(vec![]);
         harness
     }
 
