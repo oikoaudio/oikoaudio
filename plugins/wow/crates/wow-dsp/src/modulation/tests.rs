@@ -99,3 +99,81 @@ fn combined_rate_bound_covers_each_endpoint() {
     assert!(combined >= speed_delta(60.0) * SQRT_2);
     assert!(combined >= speed_delta(20.0) * SQRT_2);
 }
+
+#[test]
+fn phase_automation_crosses_zero_by_the_short_route_at_every_sample_rate() {
+    for sample_rate in [44_100.0, 48_000.0, 96_000.0] {
+        for (start, end, direction) in [(359.0, 1.0, 1.0), (1.0, 359.0, -1.0)] {
+            let mut engine = ModulationEngine::new(sample_rate, 7);
+            let mut params = ModulationParams {
+                phase_offset_turns: start / 360.0,
+                ..Default::default()
+            };
+            engine.next(params);
+            let mut previous = engine.phase_offset.unwrap();
+            params.phase_offset_turns = end / 360.0;
+            let mut travel = 0.0;
+            for _ in 0..(sample_rate * 0.3) as usize {
+                engine.next(params);
+                let current = engine.phase_offset.unwrap();
+                let delta = circular_delta(current - previous);
+                assert!(delta * direction >= -1e-12);
+                assert!(delta.abs() < 0.00005);
+                travel += delta;
+                previous = current;
+            }
+            assert!((travel - direction * 2.0_f64.to_radians()).abs() < 1e-7);
+        }
+    }
+}
+
+#[test]
+fn reanchoring_is_continuous_and_leaves_the_free_oscillator_running() {
+    let mut engine = ModulationEngine::new(48_000.0, 42);
+    let params = ModulationParams {
+        drift_amount: 0.0,
+        ..Default::default()
+    };
+    for _ in 0..1000 {
+        engine.next(params);
+    }
+    let expected = oscillator_delay(
+        engine.wow_phase,
+        params.wow_rate_hz,
+        params.wow_depth_cents,
+        params.wow_shape,
+        48_000.0,
+    );
+    let free_phase = engine.flutter_phase;
+    engine.anchor_phases([Some(0.73), None], false);
+    assert_eq!(engine.flutter_phase, free_phase);
+    assert!((engine.next(params).left - expected).abs() < 1e-10);
+    for _ in 0..20_000 {
+        engine.next(params);
+    }
+    assert!(engine.phase_correction[0].abs() < 1e-8);
+}
+
+#[test]
+fn phase_offset_and_stereo_spread_keep_their_independent_geometry() {
+    let mut engine = ModulationEngine::new(48_000.0, 7);
+    let params = ModulationParams {
+        phase_offset_turns: 0.25,
+        stereo_amount: 1.0,
+        ..Default::default()
+    };
+    let output = engine.next(params);
+    let amplitude = oscillator_delay(
+        0.0,
+        params.wow_rate_hz,
+        params.wow_depth_cents,
+        params.wow_shape,
+        48_000.0,
+    );
+    assert!((output.left - amplitude).abs() < 1e-10);
+    assert!((output.right + amplitude).abs() < 1e-10);
+    engine.reset();
+    let repeated = engine.next(params);
+    assert_eq!(output.left, repeated.left);
+    assert_eq!(output.right, repeated.right);
+}

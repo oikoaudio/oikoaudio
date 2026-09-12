@@ -12,6 +12,7 @@ fn legacy_state_restores_free_rates_and_current_state_keeps_sync() {
         fields: Default::default(),
     };
     WowPlugin::filter_state(&mut state);
+    assert!(matches!(state.params["phase_offset"], ParamValue::F32(0.0)));
     assert!(matches!(state.params["rate_sync"], ParamValue::Bool(false)));
     assert!(matches!(
         state.params["flutter_rate_sync"],
@@ -22,7 +23,14 @@ fn legacy_state_restores_free_rates_and_current_state_keeps_sync() {
     state
         .params
         .insert("rate_sync".into(), ParamValue::Bool(true));
+    state
+        .params
+        .insert("phase_offset".into(), ParamValue::F32(0.75));
     WowPlugin::filter_state(&mut state);
+    assert!(matches!(
+        state.params["phase_offset"],
+        ParamValue::F32(0.75)
+    ));
     assert!(matches!(state.params["rate_sync"], ParamValue::Bool(true)));
 }
 
@@ -63,6 +71,7 @@ fn exported_parameter_order_keeps_amount_on_the_main_page() {
             "rate_division",
             "flutter_rate_sync",
             "flutter_rate_division",
+            "phase_offset",
         ]
     );
 }

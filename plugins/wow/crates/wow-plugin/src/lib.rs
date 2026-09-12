@@ -1,6 +1,7 @@
 use display_data::{DISPLAY_REFRESH_HZ, ModulationDisplay};
 mod display_data;
 mod editor;
+mod phase_sync;
 mod rate_sync;
 use rate_sync::RateDivision;
 
@@ -46,8 +47,9 @@ pub struct WowPlugin {
     display_interval_samples: usize,
     editor_state: Arc<EguiEditorState>,
     random_seed: u64,
-    tempo_bpm: f32,
+    tempo_bpm: f64,
     previous_synced_rates: [Option<f32>; 2],
+    phase_sync: phase_sync::PhaseSync,
 }
 
 struct Channel {
@@ -97,6 +99,8 @@ struct WowParams {
     flutter_rate_sync: BoolParam,
     #[id = "flutter_rate_division"]
     flutter_rate_division: EnumParam<RateDivision>,
+    #[id = "phase_offset"]
+    phase_offset: FloatParam,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Enum, PartialEq)]
@@ -152,6 +156,16 @@ impl Default for WowParams {
         };
 
         Self {
+            phase_offset: FloatParam::new("Phase", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 })
+                .with_value_to_string(Arc::new(|v| format!("{:.0}°", v * 360.0)))
+                .with_string_to_value(Arc::new(|text| {
+                    text.trim()
+                        .trim_end_matches('°')
+                        .trim()
+                        .parse::<f32>()
+                        .ok()
+                        .map(|v| v / 360.0)
+                })),
             ui_scale: UiScaleState::default(),
             rate: FloatParam::new("Wow Rate", 0.6, wow_rate_range)
                 .with_smoother(SmoothingStyle::Logarithmic(50.0))
@@ -242,6 +256,7 @@ impl Default for WowPlugin {
             random_seed: 1,
             tempo_bpm: 120.0,
             previous_synced_rates: [None; 2],
+            phase_sync: Default::default(),
         }
     }
 }
@@ -279,6 +294,10 @@ impl Plugin for WowPlugin {
     fn filter_state(state: &mut PluginState) {
         // Missing parameters otherwise retain the current instance's values.
         // Loading a pre-sync session into a synced instance must restore Hz mode.
+        state
+            .params
+            .entry("phase_offset".to_owned())
+            .or_insert(ParamValue::F32(0.0));
         for id in ["rate_sync", "flutter_rate_sync"] {
             state
                 .params
@@ -312,7 +331,8 @@ impl Plugin for WowPlugin {
         self.sample_rate = buffer_config.sample_rate as f64;
         self.tempo_bpm = 120.0;
         self.previous_synced_rates = [None; 2];
-        self.display.store_tempo(self.tempo_bpm);
+        self.phase_sync = Default::default();
+        self.display.store_tempo(self.tempo_bpm as f32);
         let maximum_rate_delta = maximum_supported_rate_delta();
         let maximum_delay_excursion =
             maximum_delay_excursion(PluginDepthBehavior::Pitch, self.sample_rate);
@@ -352,6 +372,7 @@ impl Plugin for WowPlugin {
 
     fn reset(&mut self) {
         self.previous_synced_rates = [None; 2];
+        self.phase_sync = Default::default();
         self.modulation.reset();
         self.applied_delays = [None; 2];
         self.display_counter = 0;
@@ -368,21 +389,34 @@ impl Plugin for WowPlugin {
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
         self.tempo_bpm = rate_sync::host_tempo(context.transport().tempo, self.tempo_bpm);
-        self.display.store_tempo(self.tempo_bpm);
-        let synced_wow = self.params.rate_sync.value().then(|| {
-            self.params
-                .rate_division
-                .value()
-                .bounded(self.tempo_bpm, rate_sync::WOW)
-                .rate_hz(self.tempo_bpm) as f64
-        });
-        let synced_flutter = self.params.flutter_rate_sync.value().then(|| {
-            self.params
-                .flutter_rate_division
-                .value()
-                .bounded(self.tempo_bpm, rate_sync::FLUTTER)
-                .rate_hz(self.tempo_bpm) as f64
-        });
+        self.display.store_tempo(self.tempo_bpm as f32);
+        let divisions = [
+            self.params.rate_sync.value().then(|| {
+                self.params
+                    .rate_division
+                    .value()
+                    .bounded(self.tempo_bpm as f32, rate_sync::WOW)
+                    .beats()
+            }),
+            self.params.flutter_rate_sync.value().then(|| {
+                self.params
+                    .flutter_rate_division
+                    .value()
+                    .bounded(self.tempo_bpm as f32, rate_sync::FLUTTER)
+                    .beats()
+            }),
+        ];
+        let [synced_wow, synced_flutter] =
+            divisions.map(|division| division.map(|beats| self.tempo_bpm / (60.0 * beats)));
+        let anchors = self.phase_sync.anchors(
+            context.transport().playing,
+            context.transport().pos_beats(),
+            self.tempo_bpm / (60.0 * self.sample_rate),
+            buffer.samples(),
+            divisions,
+        );
+        self.modulation
+            .anchor_phases(anchors, self.applied_delays[0].is_none());
         for (index, (param, synced)) in [
             (&self.params.rate, synced_wow),
             (&self.params.flutter_rate, synced_flutter),
@@ -423,8 +457,8 @@ impl Plugin for WowPlugin {
         let maximum_delay_step = maximum_supported_rate_delta();
         for frame in buffer.iter_samples() {
             // Keep free-rate smoothers advancing while synced. Discrete divisions
-            // and tempo changes preserve oscillator phase; the read-head slew
-            // bound below controls any resulting delay excursion transition.
+            // preserve the running clock. Transport/division anchors settle smoothly;
+            // the read-head slew bound also limits phase-automation delay movement.
             let rate = synced_wow.unwrap_or(self.params.rate.smoothed.next() as f64);
             let flutter_rate =
                 synced_flutter.unwrap_or(self.params.flutter_rate.smoothed.next() as f64);
@@ -444,6 +478,7 @@ impl Plugin for WowPlugin {
                 flutter_shape: 0.0,
                 drift_amount: drift,
                 stereo_amount,
+                phase_offset_turns: self.params.phase_offset.value() as f64,
             });
 
             let mut display_rates = [1.0_f64; 2];

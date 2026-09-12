@@ -26,6 +26,8 @@ pub struct ModulationParams {
     pub drift_amount: f64,
     /// Symmetric L/R modulation phase displacement, 0..1 = 0..180 degrees.
     pub stereo_amount: f64,
+    /// Common circular phase offset, in turns. Smoothed within the engine.
+    pub phase_offset_turns: f64,
 }
 
 impl Default for ModulationParams {
@@ -39,6 +41,7 @@ impl Default for ModulationParams {
             flutter_shape: 0.0,
             drift_amount: 0.0,
             stereo_amount: 0.0,
+            phase_offset_turns: 0.0,
         }
     }
 }
@@ -57,6 +60,9 @@ pub struct ModulationEngine {
     flutter_phase: f64,
     wow_drift: SmoothRandom,
     flutter_drift: SmoothRandom,
+    phase_offset: Option<f64>,
+    phase_correction: [f64; 2],
+    phase_retention: f64,
 }
 
 impl ModulationEngine {
@@ -68,12 +74,16 @@ impl ModulationEngine {
             flutter_phase: 0.0,
             wow_drift: SmoothRandom::new(seed),
             flutter_drift: SmoothRandom::new(seed ^ 0xD1B5_4A32_D192_ED03),
+            phase_offset: None,
+            phase_correction: [0.0; 2],
+            phase_retention: (-1.0 / (0.02 * sample_rate)).exp(),
         }
     }
 
     pub fn set_sample_rate(&mut self, sample_rate: f64) {
         if sample_rate.is_finite() && sample_rate > 0.0 {
             self.sample_rate = sample_rate;
+            self.phase_retention = (-1.0 / (0.02 * sample_rate)).exp();
         }
     }
 
@@ -87,6 +97,32 @@ impl ModulationEngine {
         self.flutter_phase = 0.0;
         self.wow_drift.reset();
         self.flutter_drift.reset();
+        self.phase_offset = None;
+        self.phase_correction = [0.0; 2];
+    }
+
+    /// Anchor only the selected oscillators to musical positions in turns. Preserve the
+    /// current rendered phase while settling onto the new clock with a 20 ms time constant.
+    /// A fresh/reset delay line can start directly at the reference phase.
+    pub fn anchor_phases(&mut self, phases: [Option<f64>; 2], immediate: bool) {
+        for (i, (phase, drift)) in [
+            (&mut self.wow_phase, &mut self.wow_drift),
+            (&mut self.flutter_phase, &mut self.flutter_drift),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            if let Some(target) = phases[i].filter(|p| p.is_finite()) {
+                let target = target.rem_euclid(1.0) * TAU;
+                self.phase_correction[i] = if immediate {
+                    0.0
+                } else {
+                    circular_delta(*phase + self.phase_correction[i] - target)
+                };
+                *phase = target;
+                drift.reset();
+            }
+        }
     }
 
     /// Return left/right delay offsets in samples, then advance by one sample.
@@ -105,16 +141,26 @@ impl ModulationEngine {
         let wow_rate_multiplier = 2.0_f64.powf(0.5 * drift * wow_drift);
         let flutter_rate_multiplier = 2.0_f64.powf(0.5 * drift * flutter_drift);
 
+        let target = if params.phase_offset_turns.is_finite() {
+            params.phase_offset_turns.rem_euclid(1.0) * TAU
+        } else {
+            self.phase_offset.unwrap_or(0.0)
+        };
+        let phase_offset = self.phase_offset.map_or(target, |current| {
+            (current + circular_delta(target - current) * (1.0 - self.phase_retention))
+                .rem_euclid(TAU)
+        });
+        self.phase_offset = Some(phase_offset);
         let side_phase = params.stereo_amount.clamp(0.0, 1.0) * std::f64::consts::FRAC_PI_2;
         let render = |wow_side: f64, flutter_side: f64| {
             oscillator_delay(
-                self.wow_phase + wow_side,
+                self.wow_phase + self.phase_correction[0] + phase_offset + wow_side,
                 params.wow_rate_hz,
                 params.wow_depth_cents,
                 params.wow_shape,
                 self.sample_rate,
             ) + oscillator_delay(
-                self.flutter_phase + flutter_side,
+                self.flutter_phase + self.phase_correction[1] + phase_offset + flutter_side,
                 params.flutter_rate_hz,
                 params.flutter_depth_cents,
                 params.flutter_shape,
@@ -126,6 +172,9 @@ impl ModulationEngine {
             right: render(side_phase, side_phase),
         };
 
+        for correction in &mut self.phase_correction {
+            *correction *= self.phase_retention;
+        }
         self.wow_phase = advance_phase(
             self.wow_phase,
             params.wow_rate_hz * wow_rate_multiplier,
@@ -137,6 +186,16 @@ impl ModulationEngine {
             self.sample_rate,
         );
         output
+    }
+}
+
+/// Shortest signed angular distance, with a consistent half-turn tie.
+fn circular_delta(radians: f64) -> f64 {
+    let delta = radians.rem_euclid(TAU);
+    if delta > std::f64::consts::PI {
+        delta - TAU
+    } else {
+        delta
     }
 }
 

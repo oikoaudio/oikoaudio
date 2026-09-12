@@ -32,10 +32,9 @@ impl RateRange {
 
 /// Ignore missing/non-finite host tempo. Retain the last valid tempo, initially 120 BPM.
 /// The accepted domain guarantees both LFOs have in-range musical divisions.
-pub(crate) fn host_tempo(tempo: Option<f64>, previous: f32) -> f32 {
+pub(crate) fn host_tempo(tempo: Option<f64>, previous: f64) -> f64 {
     tempo
         .filter(|t| t.is_finite() && (1.0..=960.0).contains(t))
-        .map(|t| t as f32)
         .unwrap_or(previous)
 }
 
@@ -168,7 +167,7 @@ impl RateDivision {
         Self::FourThousandNinetySixth,
     ];
 
-    pub(crate) fn beats(self) -> f32 {
+    pub(crate) fn beats(self) -> f64 {
         match self {
             Self::ThirtySecondDotted => 0.1875,
             Self::SixtyFourthDotted => 0.09375,
@@ -224,6 +223,9 @@ impl RateDivision {
     }
 
     pub(crate) fn rate_hz(self, tempo_bpm: f32) -> f32 {
+        self.rate_hz_precise(tempo_bpm as f64) as f32
+    }
+    pub(crate) fn rate_hz_precise(self, tempo_bpm: f64) -> f64 {
         (tempo_bpm.max(1.0) / 60.0) / self.beats()
     }
 }

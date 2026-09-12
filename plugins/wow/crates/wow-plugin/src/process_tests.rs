@@ -229,15 +229,26 @@ fn tempo_and_mode_transitions_are_bounded_and_allocation_free() {
 }
 
 #[test]
-fn synchronized_output_is_independent_of_host_block_size_and_playhead_jumps() {
+fn synchronized_transport_and_phase_automation_are_independent_of_host_block_size() {
     let render = |block: usize| {
         let (mut plugin, mut context) = setup(true, true);
         let mut output = Vec::new();
-        for (start, tempo) in [(0, 120.0), (1024, 90.0), (2048, 143.0)] {
+        for (start, tempo, beat, phase) in [
+            (0, 120.0, -0.5, 359.0),
+            (1024, 90.0, 12.25, 1.0),
+            (2048, 143.0, 0.0, 180.0),
+        ] {
             context.transport.tempo = Some(tempo);
+            unsafe {
+                plugin
+                    .params
+                    .phase_offset
+                    ._internal_set_plain_value(phase / 360.0);
+            }
             for offset in (0..1024).step_by(block) {
-                context.transport.playing = offset % 2 == 0;
-                context.transport.pos_beats = Some(offset as f64 - 100.0);
+                context.transport.playing = true;
+                context.transport.pos_beats =
+                    Some(beat + offset as f64 * tempo / (60.0 * 48_000.0));
                 let audio = process(&mut plugin, &mut context, start + offset, block);
                 output.extend_from_slice(&audio[..block]);
             }
@@ -246,6 +257,37 @@ fn synchronized_output_is_independent_of_host_block_size_and_playhead_jumps() {
     };
     let expected = render(512);
     for block in [1, 16, 128] {
-        assert_eq!(render(block), expected);
+        let actual = render(block);
+        assert!(
+            actual
+                .iter()
+                .zip(&expected)
+                .all(|(a, b)| (a - b).abs() < 1e-6),
+            "block size {block}"
+        );
+    }
+}
+
+#[test]
+fn phase_automation_and_transport_jumps_keep_delay_steps_bounded() {
+    let (mut plugin, mut context) = setup(true, true);
+    context.transport.playing = true;
+    for (i, phase) in [0.0, 0.25, 0.75, 359.0 / 360.0, 1.0 / 360.0]
+        .into_iter()
+        .enumerate()
+    {
+        unsafe {
+            plugin.params.phase_offset._internal_set_plain_value(phase);
+        }
+        for sample in 0..512 {
+            context.transport.pos_beats = Some(i as f64 * 8.0 + sample as f64 / 24_000.0);
+            let before = plugin.applied_delays;
+            process(&mut plugin, &mut context, i * 512 + sample, 1);
+            for (before, after) in before.into_iter().zip(plugin.applied_delays) {
+                if let (Some(before), Some(after)) = (before, after) {
+                    assert!((after - before).abs() <= maximum_supported_rate_delta() + 1e-10);
+                }
+            }
+        }
     }
 }

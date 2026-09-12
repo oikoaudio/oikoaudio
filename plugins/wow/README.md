@@ -33,14 +33,15 @@ The distinction matters most on exposed high frequencies and when several modula
 
 - **Wow Rate** sets the slow oscillator from 0.1 to 4 Hz.
 - **Flutter Rate** sets the fast oscillator from 6 to 30 Hz.
-- **Wow / Flutter** blends their contributions with a constant-power law.
+- **Wow / Flutter** blends their contributions with a constant-power law. The slider shows the Wow share, so 90/10 is 90% full. Moving right adds Wow; moving left adds Flutter.
 - **Amount** controls the total pitch movement.
 - **Drift** adds repeatable, smoothly changing variation to both oscillator rates.
-- **L/R Phase Offset** separates the left and right modulation phases by up to 180 degrees without introducing a separate chorus or widening process.
+- **Phase** rotates both oscillators through a full cycle. The blue pointer shows the common phase offset. Drag the dial or its degree readout; hold Shift for fine adjustment. The control wraps through zero, and automation follows the shortest circular path with a 20 ms smoothing time constant. Fast phase changes can still produce pitch movement, with the existing delay-slew limit bounding the transition.
+- **Stereo spread**, shown by the paired-circle symbol beneath Phase, separates left and right symmetrically by up to 180 degrees. Drag its orange degree value or Alt-drag the Phase dial to adjust it. Hold Shift for fine adjustment. The orange arc shows that spread around the phase pointer and wraps naturally across zero. Zero spread keeps the channels linked.
 
 The Hz and musical-note choices beside each rate value switch that oscillator independently between free Hz and host-tempo sync. The active choice is highlighted. In SYNC, divisions occupy their equivalent Hz positions on the knob. Switching from FREE selects the nearest in-range division; switching back keeps its equivalent Hz speed. Dotted divisions use D and triplets use T. Hover over a synced knob to see its Hz rate. Tempo changes retain the chosen division while it fits the oscillator’s range; outside that range, the nearest in-range division plays and is displayed until the chosen division fits again. The Wow / Flutter balance and both Pitch Range modes keep their existing depth laws.
 
-Sync follows host tempo without restarting the LFO phase at playback, loop or seek boundaries. Modulation continues while transport is stopped, and Drift still adds variation around the synced rate; set Drift to zero for a steady tempo-derived cycle. If tempo is unavailable or outside the supported 1–960 BPM range, Wow retains the last valid tempo, initially 120 BPM. New instances and older sessions start with both rates in FREE mode.
+Synced oscillators anchor their phase to the song beat position when playback starts, loops or seeks, and when their sync division changes or sync is enabled during playback. Their phase and seeded Drift restart from that reference; a running delay transitions smoothly onto the new phase. Free-Hz oscillators keep running independently. Modulation continues while transport is stopped. Drift allows intentional wandering after each anchor; set Drift to zero to stay on the beat grid after the transition settles. If song position is unavailable, sync follows tempo without re-anchoring. If tempo is unavailable or outside the supported 1–960 BPM range, Wow retains the last valid tempo, initially 120 BPM. New instances and older sessions start with both rates in FREE mode.
 
 The display shows the combined left and right motion produced by the current settings. Random Seed makes Drift repeatable when a session is reopened.
 

@@ -1,3 +1,4 @@
+mod phase;
 use crate::display_data::ModulationDisplay;
 use oiko_plugin::{
     gestures::ParameterWriter,
@@ -155,13 +156,7 @@ impl WowEditor {
                         setter,
                         palette,
                     );
-                    knob(
-                        &mut columns[2],
-                        "WOW / FLUTTER",
-                        &self.params.wow_flutter,
-                        setter,
-                        palette,
-                    );
+                    phase::control(&mut columns[2], &self.params, setter, palette);
                     knob(
                         &mut columns[3],
                         "AMOUNT",
@@ -181,7 +176,14 @@ impl WowEditor {
                             bottom: 0,
                         })
                         .show(&mut columns[0], |ui| {
-                            parameter_slider(ui, "DRIFT", &self.params.drift, setter, palette);
+                            parameter_slider(
+                                ui,
+                                "DRIFT",
+                                &self.params.drift,
+                                setter,
+                                palette,
+                                false,
+                            );
                         });
                     Frame::NONE
                         .inner_margin(egui::Margin {
@@ -193,10 +195,11 @@ impl WowEditor {
                         .show(&mut columns[1], |ui| {
                             parameter_slider(
                                 ui,
-                                "L/R PHASE OFFSET",
-                                &self.params.stereo,
+                                "WOW / FLUTTER",
+                                &self.params.wow_flutter,
                                 setter,
                                 palette,
+                                true,
                             );
                         });
                 });
@@ -550,6 +553,7 @@ fn parameter_slider<P: Param>(
     param: &P,
     setter: &oiko_plugin::gestures::GestureSetter<'_>,
     palette: Palette,
+    inverted: bool,
 ) {
     let (label_rect, _) =
         ui.allocate_exact_size(Vec2::new(ui.available_width(), 18.0), Sense::hover());
@@ -573,15 +577,25 @@ fn parameter_slider<P: Param>(
         ),
         palette.ink,
     );
-    let (rect, response) = ui.allocate_exact_size(
+    let (rect, _) = ui.allocate_exact_size(
         Vec2::new(ui.available_width(), 24.0),
         Sense::click_and_drag(),
     );
+    let response = ui.interact(
+        rect,
+        Id::new(("slider", param.as_ptr())),
+        Sense::click_and_drag(),
+    );
     let value_range = rect.shrink2(Vec2::new(8.0, 0.0));
-    parameter_absolute(ui, &response, value_range, param, setter);
+    parameter_absolute(ui, &response, value_range, param, setter, inverted);
     let track = Rect::from_center_size(value_range.center(), Vec2::new(value_range.width(), 4.0));
     ui.painter().rect_filled(track, 2.0, palette.track);
     let normalized = param.modulated_normalized_value().clamp(0.0, 1.0);
+    let normalized = if inverted {
+        1.0 - normalized
+    } else {
+        normalized
+    };
     let x = value_range.left() + normalized * value_range.width();
     let filled = Rect::from_min_max(track.left_top(), Pos2::new(x, track.bottom()));
     ui.painter().rect_filled(filled, 2.0, palette.blue);
@@ -611,12 +625,14 @@ fn parameter_absolute<P: Param>(
     value_range: Rect,
     param: &P,
     setter: &oiko_plugin::gestures::GestureSetter<'_>,
+    inverted: bool,
 ) {
     if response.double_clicked() {
         setter.set_discrete_parameter(param, param.default_plain_value());
         return;
     }
-    parameter_drag(
+    let map = |value: f32| if inverted { 1.0 - value } else { value };
+    parameter_drag_mapped(
         ui,
         response,
         param,
@@ -625,12 +641,15 @@ fn parameter_absolute<P: Param>(
             range: value_range,
             fine_sensitivity: None,
         },
+        (map(param.unmodulated_normalized_value()), |v| {
+            param.preview_plain(map(v))
+        }),
     );
     if response.clicked()
         && let Some(pointer) = response.interact_pointer_pos()
     {
         let normalized = ((pointer.x - value_range.left()) / value_range.width()).clamp(0.0, 1.0);
-        setter.set_discrete_parameter(param, param.preview_plain(normalized));
+        setter.set_discrete_parameter(param, param.preview_plain(map(normalized)));
     }
 }
 
