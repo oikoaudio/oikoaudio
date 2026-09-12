@@ -1,7 +1,7 @@
 use crate::display_data::ModulationDisplay;
 use oiko_plugin::{
     gestures::ParameterWriter,
-    parameter_controls::{DragMode, parameter_drag},
+    parameter_controls::{DragMode, parameter_drag, parameter_drag_mapped},
 };
 use std::{
     f32::consts::PI,
@@ -68,6 +68,19 @@ impl NiceEguiApp for WowEditor {
     }
 
     fn ui(&mut self, root_ui: &mut egui::Ui, _frame: &mut nice_plug_egui::Frame) {
+        self.draw_ui(root_ui);
+    }
+
+    fn editor_closed(&mut self) {
+        if let Some(context) = &self.gui_context {
+            self.gestures.finish(&*self.params, &context.param_setter());
+        }
+        self.gui_context = None;
+    }
+}
+
+impl WowEditor {
+    fn draw_ui(&mut self, root_ui: &mut egui::Ui) {
         root_ui
             .ctx()
             .request_repaint_after(Duration::from_millis(16));
@@ -109,24 +122,36 @@ impl NiceEguiApp for WowEditor {
             ui,
             palette,
             &self.display,
-            crate::display_rate_scale(&self.params),
+            crate::display_rate_scale(&self.params, self.display.tempo()),
         );
 
         Frame::NONE
             .inner_margin(egui::Margin::symmetric(8, 15))
             .show(ui, |ui| {
                 ui.columns(4, |columns| {
-                    knob(
+                    rate_knob(
                         &mut columns[0],
                         "WOW RATE",
-                        &self.params.rate,
+                        RateControl {
+                            free: &self.params.rate,
+                            sync: &self.params.rate_sync,
+                            division: &self.params.rate_division,
+                            range: crate::rate_sync::WOW,
+                        },
+                        self.display.tempo(),
                         setter,
                         palette,
                     );
-                    knob(
+                    rate_knob(
                         &mut columns[1],
                         "FLUTTER RATE",
-                        &self.params.flutter_rate,
+                        RateControl {
+                            free: &self.params.flutter_rate,
+                            sync: &self.params.flutter_rate_sync,
+                            division: &self.params.flutter_rate_division,
+                            range: crate::rate_sync::FLUTTER,
+                        },
+                        self.display.tempo(),
                         setter,
                         palette,
                     );
@@ -190,13 +215,6 @@ impl NiceEguiApp for WowEditor {
             self.params.ui_scale.set(scale);
             request_settled_scale(root_ui.ctx(), scale);
         }
-    }
-
-    fn editor_closed(&mut self) {
-        if let Some(context) = &self.gui_context {
-            self.gestures.finish(&*self.params, &context.param_setter());
-        }
-        self.gui_context = None;
     }
 }
 
@@ -297,40 +315,233 @@ fn knob<P: Param>(
                 .size(oiko_ui::typography::TEXT_SMALL)
                 .color(palette.muted),
         );
-        let (rect, response) = ui.allocate_exact_size(Vec2::splat(58.0), Sense::click_and_drag());
-        parameter_drag(
-            ui,
-            &response,
-            param,
-            setter,
-            DragMode::Relative {
-                sensitivity: 0.0045,
-                horizontal_weight: 0.35,
-                fine_scale: 0.2,
-            },
-        );
-        if response.double_clicked() {
-            setter.set_discrete_parameter(param, param.default_plain_value());
-        }
-        if response.hovered() || response.dragged() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
-        }
-        let normalized = param.modulated_normalized_value().clamp(0.0, 1.0);
-        let center = rect.center();
-        ui.painter().circle_filled(center, 28.0, palette.page);
-        ui.painter()
-            .circle_stroke(center, 28.0, Stroke::new(1.0, palette.rule));
-        let angle = PI * 0.75 + normalized * PI * 1.5;
-        let inner = center + Vec2::angled(angle) * 7.0;
-        let outer = center + Vec2::angled(angle) * 22.0;
-        ui.painter()
-            .line_segment([inner, outer], Stroke::new(2.0, palette.blue));
+        knob_face(ui, param, setter, palette);
         ui.label(
             egui::RichText::new(param.to_string())
                 .size(oiko_ui::typography::TEXT_SMALL)
                 .color(palette.ink),
         );
     });
+}
+
+fn knob_face<P: Param>(
+    ui: &mut egui::Ui,
+    param: &P,
+    setter: &oiko_plugin::gestures::GestureSetter<'_>,
+    palette: Palette,
+) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::splat(58.0), Sense::hover());
+    let response = ui.interact(
+        rect,
+        Id::new(("knob", param.as_ptr())),
+        Sense::click_and_drag(),
+    );
+    parameter_drag(ui, &response, param, setter, knob_drag_mode());
+    if response.double_clicked() {
+        setter.set_discrete_parameter(param, param.default_plain_value());
+    }
+    draw_knob(
+        ui,
+        rect,
+        &response,
+        param.modulated_normalized_value(),
+        palette,
+    );
+}
+
+fn knob_drag_mode() -> DragMode {
+    DragMode::Relative {
+        sensitivity: 0.0045,
+        horizontal_weight: 0.35,
+        fine_scale: 0.2,
+    }
+}
+
+fn draw_knob(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    response: &Response,
+    normalized: f32,
+    palette: Palette,
+) {
+    if response.hovered() || response.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+    }
+    let center = rect.center();
+    ui.painter().circle_filled(center, 28.0, palette.page);
+    ui.painter()
+        .circle_stroke(center, 28.0, Stroke::new(1.0, palette.rule));
+    let angle = PI * 0.75 + normalized.clamp(0.0, 1.0) * PI * 1.5;
+    ui.painter().line_segment(
+        [
+            center + Vec2::angled(angle) * 7.0,
+            center + Vec2::angled(angle) * 22.0,
+        ],
+        Stroke::new(2.0, palette.blue),
+    );
+}
+
+struct RateControl<'a> {
+    free: &'a nice_plug::params::FloatParam,
+    sync: &'a nice_plug::params::BoolParam,
+    division: &'a nice_plug::params::EnumParam<crate::RateDivision>,
+    range: crate::rate_sync::RateRange,
+}
+
+fn rate_knob(
+    ui: &mut egui::Ui,
+    label: &str,
+    control: RateControl<'_>,
+    tempo: f32,
+    setter: &oiko_plugin::gestures::GestureSetter<'_>,
+    palette: Palette,
+) {
+    ui.push_id(label, |ui| {
+        ui.vertical_centered(|ui| {
+            ui.label(
+                egui::RichText::new(label)
+                    .size(oiko_ui::typography::TEXT_SMALL)
+                    .color(palette.muted),
+            );
+            let value = if control.sync.value() {
+                let effective = control.division.value().bounded(tempo, control.range);
+                let position = control.free.preview_normalized(effective.rate_hz(tempo));
+                let (rect, _) = ui.allocate_exact_size(Vec2::splat(58.0), Sense::hover());
+                let response = ui.interact(
+                    rect,
+                    Id::new(("knob", control.division.as_ptr())),
+                    Sense::click_and_drag(),
+                );
+                parameter_drag_mapped(
+                    ui,
+                    &response,
+                    control.division,
+                    setter,
+                    knob_drag_mode(),
+                    (position, |normalized| {
+                        crate::RateDivision::closest_to_hz(
+                            control.free.preview_plain(normalized),
+                            tempo,
+                            control.range,
+                        )
+                    }),
+                );
+                if response.double_clicked() {
+                    setter.set_discrete_parameter(
+                        control.division,
+                        crate::RateDivision::closest_to_hz(
+                            control.free.default_plain_value(),
+                            tempo,
+                            control.range,
+                        ),
+                    );
+                }
+                let text = control.division.normalized_value_to_string(
+                    control.division.preview_normalized(effective),
+                    true,
+                );
+                draw_knob(ui, rect, &response, position, palette);
+                response.on_hover_text(format!(
+                    "{:.2} Hz at {tempo:.1} BPM",
+                    effective.rate_hz(tempo)
+                ));
+                text
+            } else {
+                knob_face(ui, control.free, setter, palette);
+                control
+                    .free
+                    .normalized_value_to_string(control.free.modulated_normalized_value(), false)
+            };
+            rate_readout(ui, &value, control, tempo, setter, palette);
+        });
+    });
+}
+
+fn rate_readout(
+    ui: &mut egui::Ui,
+    value: &str,
+    control: RateControl<'_>,
+    tempo: f32,
+    setter: &oiko_plugin::gestures::GestureSetter<'_>,
+    palette: Palette,
+) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(84.0, 14.0), Sense::hover());
+    ui.painter().text(
+        Pos2::new(rect.left() + 42.0, rect.center().y),
+        Align2::RIGHT_CENTER,
+        value,
+        FontId::proportional(oiko_ui::typography::TEXT_SMALL),
+        palette.ink,
+    );
+    let synced = control.sync.value();
+    for (sync, x, id) in [(false, 46.0, "rate-free"), (true, 66.0, "rate-sync")] {
+        let choice = Rect::from_min_size(rect.min + Vec2::new(x, 0.0), Vec2::new(18.0, 14.0));
+        let response = ui
+            .interact(choice, Id::new((id, control.sync.as_ptr())), Sense::click())
+            .on_hover_text(if sync {
+                "Sync this rate to host tempo"
+            } else {
+                "Set this rate in Hz"
+            });
+        if response.hovered() {
+            ui.painter().rect_filled(choice, 2.0, palette.field);
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        let color = if sync == synced {
+            palette.blue
+        } else if response.hovered() {
+            palette.ink
+        } else {
+            palette.muted
+        };
+        if sync {
+            // Match the eight-point cap height of the adjacent 11-point Hz text.
+            let center = choice.center() + Vec2::new(0.0, 1.0);
+            ui.painter().rect_filled(
+                Rect::from_min_size(center + Vec2::new(1.0, -4.0), Vec2::new(1.0, 7.0)),
+                0.0,
+                color,
+            );
+            ui.painter().add(Shape::ellipse_filled(
+                center + Vec2::new(-0.25, 2.5),
+                Vec2::new(2.25, 1.5),
+                color,
+            ));
+        } else {
+            ui.painter().text(
+                choice.center(),
+                Align2::CENTER_CENTER,
+                "Hz",
+                FontId::proportional(oiko_ui::typography::TEXT_SMALL),
+                color,
+            );
+        }
+        if response.clicked() && sync != synced {
+            if sync {
+                setter.set_discrete_parameter(
+                    control.division,
+                    crate::RateDivision::closest_to_hz(control.free.value(), tempo, control.range),
+                );
+            } else {
+                setter.set_discrete_parameter(
+                    control.free,
+                    control
+                        .division
+                        .value()
+                        .bounded(tempo, control.range)
+                        .rate_hz(tempo),
+                );
+            }
+            setter.set_discrete_parameter(control.sync, sync);
+        }
+    }
+    ui.painter().line_segment(
+        [
+            Pos2::new(rect.left() + 65.0, rect.top() + 3.0),
+            Pos2::new(rect.left() + 65.0, rect.bottom() - 3.0),
+        ],
+        Stroke::new(1.0, palette.rule),
+    );
 }
 
 fn parameter_slider<P: Param>(
@@ -593,3 +804,6 @@ fn footer_param<P: Param>(
         );
     }
 }
+
+#[cfg(test)]
+mod tests;

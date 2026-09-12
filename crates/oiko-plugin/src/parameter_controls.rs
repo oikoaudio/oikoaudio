@@ -25,8 +25,30 @@ pub fn parameter_drag<P: Param>(
     setter: &impl ParameterWriter,
     mode: DragMode,
 ) {
+    parameter_drag_mapped(
+        ui,
+        response,
+        param,
+        setter,
+        mode,
+        (param.unmodulated_normalized_value(), |value| {
+            param.preview_plain(value)
+        }),
+    );
+}
+
+/// Use a display-space position and inverse mapping while retaining host gesture semantics.
+/// This lets musical divisions occupy their equivalent Hz positions on a rate control.
+pub fn parameter_drag_mapped<P: Param>(
+    ui: &Ui,
+    response: &Response,
+    param: &P,
+    setter: &impl ParameterWriter,
+    mode: DragMode,
+    mapping: (f32, impl Fn(f32) -> P::Plain),
+) {
+    let (normalized, from_normalized) = mapping;
     let memory_id = response.id.with("drag-start");
-    let normalized = param.unmodulated_normalized_value();
     if response.drag_started() {
         setter.begin_set_parameter(param);
         ui.data_mut(|data| data.insert_temp(memory_id, normalized));
@@ -61,7 +83,7 @@ pub fn parameter_drag<P: Param>(
             }
         };
         if let Some(value) = value {
-            setter.set_parameter(param, param.preview_plain(value.clamp(0.0, 1.0)));
+            setter.set_parameter(param, from_normalized(value.clamp(0.0, 1.0)));
         }
     }
     if response.drag_stopped() {

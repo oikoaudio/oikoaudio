@@ -5,6 +5,10 @@
 
 # Local agent instructions, at any directory level.
 AGENTS.md
+AGENTS.local.md
+
+# Personal skills imported for this checkout.
+/.agents/skills/unslop/
 
 /vendor/*/target/
 

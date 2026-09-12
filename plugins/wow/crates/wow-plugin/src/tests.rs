@@ -1,6 +1,32 @@
 use super::*;
 
 #[test]
+fn legacy_state_restores_free_rates_and_current_state_keeps_sync() {
+    let mut state = PluginState {
+        version: "0.1.1".into(),
+        params: [
+            ("rate".into(), ParamValue::F32(0.73)),
+            ("flutter_rate".into(), ParamValue::F32(17.2)),
+        ]
+        .into(),
+        fields: Default::default(),
+    };
+    WowPlugin::filter_state(&mut state);
+    assert!(matches!(state.params["rate_sync"], ParamValue::Bool(false)));
+    assert!(matches!(
+        state.params["flutter_rate_sync"],
+        ParamValue::Bool(false)
+    ));
+    assert!(matches!(state.params["rate"], ParamValue::F32(v) if v == 0.73));
+    assert!(matches!(state.params["flutter_rate"], ParamValue::F32(v) if v == 17.2));
+    state
+        .params
+        .insert("rate_sync".into(), ParamValue::Bool(true));
+    WowPlugin::filter_state(&mut state);
+    assert!(matches!(state.params["rate_sync"], ParamValue::Bool(true)));
+}
+
+#[test]
 fn interface_scale_round_trips_and_stays_within_supported_bounds() {
     let scale = UiScaleState::default();
     assert!((scale.get() - 1.0).abs() < 1.0e-6);
@@ -33,6 +59,10 @@ fn exported_parameter_order_keeps_amount_on_the_main_page() {
             "random_seed",
             "quality",
             "depth_behavior",
+            "rate_sync",
+            "rate_division",
+            "flutter_rate_sync",
+            "flutter_rate_division",
         ]
     );
 }

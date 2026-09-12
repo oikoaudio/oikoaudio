@@ -18,6 +18,9 @@ nice-plug.workspace = true
 nice-plug-egui.workspace = true
 wow-dsp = { path = "../wow-dsp" }
 
+[dev-dependencies]
+nice-assert-no-alloc = "1"
+
 [package.metadata.oiko]
 role = "plugin"
 product = "wow"

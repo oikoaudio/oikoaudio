@@ -1,11 +1,14 @@
 use display_data::{DISPLAY_REFRESH_HZ, ModulationDisplay};
 mod display_data;
 mod editor;
+mod rate_sync;
+use rate_sync::RateDivision;
 
 use editor::{EDITOR_HEIGHT, EDITOR_WIDTH, WowEditor, closest_ui_scale};
 type UiScaleState = oiko_plugin::UiScaleState<100>;
 #[cfg(test)]
 use nice_plug::params::persist::PersistentField;
+use nice_plug::plugin::ParamValue;
 use nice_plug::prelude::*;
 use nice_plug_egui::{
     EguiEditor, EguiEditorState, EguiNiceSettings, RepaintNotifier, create_egui_editor,
@@ -43,6 +46,8 @@ pub struct WowPlugin {
     display_interval_samples: usize,
     editor_state: Arc<EguiEditorState>,
     random_seed: u64,
+    tempo_bpm: f32,
+    previous_synced_rates: [Option<f32>; 2],
 }
 
 struct Channel {
@@ -82,6 +87,16 @@ struct WowParams {
 
     #[id = "depth_behavior"]
     depth_behavior: EnumParam<PluginDepthBehavior>,
+
+    // Append new host parameters so the original main-page order is preserved.
+    #[id = "rate_sync"]
+    rate_sync: BoolParam,
+    #[id = "rate_division"]
+    rate_division: EnumParam<RateDivision>,
+    #[id = "flutter_rate_sync"]
+    flutter_rate_sync: BoolParam,
+    #[id = "flutter_rate_division"]
+    flutter_rate_division: EnumParam<RateDivision>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Enum, PartialEq)]
@@ -193,6 +208,13 @@ impl Default for WowParams {
             // Hosts may restart processing when the reported latency changes.
             depth_behavior: EnumParam::new("Pitch Range", PluginDepthBehavior::Time)
                 .non_automatable(),
+            rate_sync: BoolParam::new("Wow Sync", false),
+            rate_division: EnumParam::new("Wow Division", RateDivision::HalfDotted),
+            flutter_rate_sync: BoolParam::new("Flutter Sync", false),
+            flutter_rate_division: EnumParam::new(
+                "Flutter Division",
+                RateDivision::SixteenthTriplet,
+            ),
         }
     }
 }
@@ -218,6 +240,8 @@ impl Default for WowPlugin {
                 1.0,
             ),
             random_seed: 1,
+            tempo_bpm: 120.0,
+            previous_synced_rates: [None; 2],
         }
     }
 }
@@ -252,6 +276,17 @@ impl Plugin for WowPlugin {
         self.params.clone()
     }
 
+    fn filter_state(state: &mut PluginState) {
+        // Missing parameters otherwise retain the current instance's values.
+        // Loading a pre-sync session into a synced instance must restore Hz mode.
+        for id in ["rate_sync", "flutter_rate_sync"] {
+            state
+                .params
+                .entry(id.to_owned())
+                .or_insert(ParamValue::Bool(false));
+        }
+    }
+
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Self::Editor> {
         // Seed geometry from the fixed canvas without compounding user zoom.
         // Hosts may create this editor before restoring state and reuse it on
@@ -275,6 +310,9 @@ impl Plugin for WowPlugin {
         context: &mut impl ActivateContext<Self>,
     ) -> bool {
         self.sample_rate = buffer_config.sample_rate as f64;
+        self.tempo_bpm = 120.0;
+        self.previous_synced_rates = [None; 2];
+        self.display.store_tempo(self.tempo_bpm);
         let maximum_rate_delta = maximum_supported_rate_delta();
         let maximum_delay_excursion =
             maximum_delay_excursion(PluginDepthBehavior::Pitch, self.sample_rate);
@@ -313,6 +351,7 @@ impl Plugin for WowPlugin {
     }
 
     fn reset(&mut self) {
+        self.previous_synced_rates = [None; 2];
         self.modulation.reset();
         self.applied_delays = [None; 2];
         self.display_counter = 0;
@@ -328,6 +367,41 @@ impl Plugin for WowPlugin {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
+        self.tempo_bpm = rate_sync::host_tempo(context.transport().tempo, self.tempo_bpm);
+        self.display.store_tempo(self.tempo_bpm);
+        let synced_wow = self.params.rate_sync.value().then(|| {
+            self.params
+                .rate_division
+                .value()
+                .bounded(self.tempo_bpm, rate_sync::WOW)
+                .rate_hz(self.tempo_bpm) as f64
+        });
+        let synced_flutter = self.params.flutter_rate_sync.value().then(|| {
+            self.params
+                .flutter_rate_division
+                .value()
+                .bounded(self.tempo_bpm, rate_sync::FLUTTER)
+                .rate_hz(self.tempo_bpm) as f64
+        });
+        for (index, (param, synced)) in [
+            (&self.params.rate, synced_wow),
+            (&self.params.flutter_rate, synced_flutter),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            if synced.is_none()
+                && let Some(previous_rate) = self.previous_synced_rates[index]
+            {
+                // Resume smoothing from the audible synced rate, not the stale
+                // Hz setting that was hidden while the division knob was moved.
+                param.smoothed.reset(previous_rate);
+                param
+                    .smoothed
+                    .set_target(self.sample_rate as f32, param.value());
+            }
+            self.previous_synced_rates[index] = synced.map(|rate| rate as f32);
+        }
         let depth_behavior = self.params.depth_behavior.value();
         if depth_behavior != self.depth_behavior {
             self.depth_behavior = depth_behavior;
@@ -348,8 +422,12 @@ impl Plugin for WowPlugin {
         // restart processing immediately.
         let maximum_delay_step = maximum_supported_rate_delta();
         for frame in buffer.iter_samples() {
-            let rate = self.params.rate.smoothed.next() as f64;
-            let flutter_rate = self.params.flutter_rate.smoothed.next() as f64;
+            // Keep free-rate smoothers advancing while synced. Discrete divisions
+            // and tempo changes preserve oscillator phase; the read-head slew
+            // bound below controls any resulting delay excursion transition.
+            let rate = synced_wow.unwrap_or(self.params.rate.smoothed.next() as f64);
+            let flutter_rate =
+                synced_flutter.unwrap_or(self.params.flutter_rate.smoothed.next() as f64);
             let amount = self.params.amount.smoothed.next() as f64;
             let wow_flutter = self.params.wow_flutter.smoothed.next() as f64;
             let (depth_cents, flutter_depth) =
@@ -523,12 +601,28 @@ fn skew_factor_for_midpoint(min: f32, midpoint: f32, max: f32) -> f32 {
     0.5_f32.ln() / ((midpoint - min) / (max - min)).ln()
 }
 
-fn display_rate_scale(params: &WowParams) -> f32 {
+fn display_rate_scale(params: &WowParams, tempo: f32) -> f32 {
     let (wow_depth, flutter_depth) = modulation_depths(
         1.0,
         params.wow_flutter.modulated_plain_value() as f64,
-        params.rate.modulated_plain_value() as f64,
-        params.flutter_rate.modulated_plain_value() as f64,
+        if params.rate_sync.value() {
+            params
+                .rate_division
+                .value()
+                .bounded(tempo, rate_sync::WOW)
+                .rate_hz(tempo) as f64
+        } else {
+            params.rate.modulated_plain_value() as f64
+        },
+        if params.flutter_rate_sync.value() {
+            params
+                .flutter_rate_division
+                .value()
+                .bounded(tempo, rate_sync::FLUTTER)
+                .rate_hz(tempo) as f64
+        } else {
+            params.flutter_rate.modulated_plain_value() as f64
+        },
         params.depth_behavior.value(),
     );
     let drift_multiplier =
@@ -568,3 +662,6 @@ nice_export_vst3!(WowPlugin);
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod process_tests;

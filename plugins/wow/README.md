@@ -38,6 +38,10 @@ The distinction matters most on exposed high frequencies and when several modula
 - **Drift** adds repeatable, smoothly changing variation to both oscillator rates.
 - **L/R Phase Offset** separates the left and right modulation phases by up to 180 degrees without introducing a separate chorus or widening process.
 
+The Hz and musical-note choices beside each rate value switch that oscillator independently between free Hz and host-tempo sync. The active choice is highlighted. In SYNC, divisions occupy their equivalent Hz positions on the knob. Switching from FREE selects the nearest in-range division; switching back keeps its equivalent Hz speed. Dotted divisions use D and triplets use T. Hover over a synced knob to see its Hz rate. Tempo changes retain the chosen division while it fits the oscillator’s range; outside that range, the nearest in-range division plays and is displayed until the chosen division fits again. The Wow / Flutter balance and both Pitch Range modes keep their existing depth laws.
+
+Sync follows host tempo without restarting the LFO phase at playback, loop or seek boundaries. Modulation continues while transport is stopped, and Drift still adds variation around the synced rate; set Drift to zero for a steady tempo-derived cycle. If tempo is unavailable or outside the supported 1–960 BPM range, Wow retains the last valid tempo, initially 120 BPM. New instances and older sessions start with both rates in FREE mode.
+
 The display shows the combined left and right motion produced by the current settings. Random Seed makes Drift repeatable when a session is reopened.
 
 New instances open at 0.6 Hz Wow, 12 Hz Flutter, a 90/10 Wow/Flutter balance, 50% Amount, 50% Drift, and a mono-linked 0° L/R phase offset.

@@ -7,6 +7,7 @@ const DISPLAY_POINTS: usize = 2048;
 pub(crate) struct ModulationDisplay {
     pub(crate) left: [AtomicU32; DISPLAY_POINTS],
     pub(crate) right: [AtomicU32; DISPLAY_POINTS],
+    tempo_bpm: AtomicU32,
     pub(crate) cursor: AtomicUsize,
 }
 
@@ -15,12 +16,22 @@ impl Default for ModulationDisplay {
         Self {
             left: [const { AtomicU32::new(0) }; DISPLAY_POINTS],
             right: [const { AtomicU32::new(0) }; DISPLAY_POINTS],
+            tempo_bpm: AtomicU32::new(120.0_f32.to_bits()),
             cursor: AtomicUsize::new(0),
         }
     }
 }
 
 impl ModulationDisplay {
+    // Independent approximate scalar: the audio thread writes and the editor reads.
+    pub(crate) fn store_tempo(&self, tempo: f32) {
+        self.tempo_bpm.store(tempo.to_bits(), Ordering::Relaxed);
+    }
+
+    pub(crate) fn tempo(&self) -> f32 {
+        f32::from_bits(self.tempo_bpm.load(Ordering::Relaxed))
+    }
+
     #[inline]
     pub(crate) fn push(&self, left: f32, right: f32) {
         let sequence = self.cursor.load(Ordering::Relaxed);
