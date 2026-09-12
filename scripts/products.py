@@ -25,13 +25,16 @@ class Product:
 
 
 def products() -> dict[str, Product]:
+    version = tomllib.loads((ROOT / "Cargo.toml").read_text())["workspace"]["package"]["version"]
     registry = tomllib.loads((ROOT / "products.toml").read_text())["products"]
     bundles = tomllib.loads((ROOT / "bundler.toml").read_text())
     result = {}
     for key, config in registry.items():
         package = tomllib.loads((ROOT / config["manifest"]).read_text())["package"]
+        if package["version"] not in ({"workspace": True}, version):
+            raise ValueError(f"{key}: plugin version must match workspace release {version}")
         result[key] = Product(
-            key, package["name"], package["version"], bundles[package["name"]]["name"],
+            key, package["name"], version, bundles[package["name"]]["name"],
             (package["name"], *config["test_packages"]), config["linux_archive"],
             config.get("notes"), ROOT / config["notes_file"] if "notes_file" in config else None,
             ROOT / config["package_script"] if "package_script" in config else None,

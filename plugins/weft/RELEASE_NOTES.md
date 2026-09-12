@@ -1,24 +1,39 @@
-# Oiko Weft 0.4.0-beta.1
+# Oiko Weft 0.5.0-beta.1
 
-## Changes since 0.1.1-beta4
+Wow, Weft and Inton now share one release version. These plugins are still maturing; sound, controls and automation mappings may change between beta releases. Keep the previous plugin version and a backup of existing projects before updating.
 
-- Moves Weft into the shared Oiko Audio workspace, with shared DSP and UI infrastructure and framework fixes.
-- Aligns the beta version with Wow and Inton.
+## Compatibility with earlier betas
 
-## Previous beta highlights
+Check Motion Shape automation before playing or exporting existing projects. Cloud expands the selector from seven choices to eight. VST3 stores automation as normalized positions, so some old automation points now select a different shape. Host mappings and macros that store normalized values may also need adjustment.
 
-- Follows tuning from MTS-ESP hosts such as Inton, including changes to held and pinned notes.
-- Shows the active scale on the note ruler, with notes spaced by their tuned frequencies.
-- Adds three-bar and dotted-whole sync rates for spectral motion.
+| Previous Motion Shape | Shape selected by the old VST3 automation value |
+| --- | --- |
+| Ripple | Ripple |
+| Harmonic | Harmonic |
+| Drift | Drift |
+| Scan | Notch |
+| Notch | Saw |
+| Saw | Sprinkle |
+| Splash | Cloud |
 
-Pitch bend and note expression work on top of the MTS tuning. Without an active MTS master, Weft uses standard tuning. Install the MTS-ESP runtime supplied with your tuning software, then restart your DAW.
+Re-select the intended shape and update the affected automation points or controller mappings. Review transitions between points as well. Normalized positions changed from index/6 to index/7; a host's value labels are the easiest way to check the result.
 
-## Formats and known issues
+Saved integer shape selections and CLAP's plain parameter values retain their indices. Index 6, formerly Splash, now selects Sprinkle. Sprinkle replaces Splash with a different particle effect, so those saved settings will sound different even without automation. Keep the previous version if you need the original Splash sound. Loading plugin state cannot migrate automation stored by the host.
 
-CLAP and VST3 for Linux x86-64, Windows x86-64, and macOS Apple Silicon and Intel. The beta builds are unsigned and the macOS builds are not notarized. Audio Unit remains disabled while the Logic editor issue is unresolved.
+## Changes
 
-In Bitwig Studio 6.1, CLAP latency may not refresh after changing Resolution. Deactivate and reactivate Weft after a change, especially before exporting. VST3 updates latency correctly in the reported tests. On Linux, REAPER's CLAP editor may need its UI toggled off and back on the first time it opens.
+- Sprinkle replaces Splash with deterministic spectral particles. Cloud adds rounded and reverse-swell particle envelopes. Both work with live or pinned notes and generate free patterns when no notes are supplied.
+- Common per-note expression and MPE support for tuning, pressure, gain, pan, brightness and vibrato.
+- Corner-drag resizing from 50% to 200%, restored zoom handling, and the updated shared editor and plugin framework.
+
+MTS-ESP tuning support continues to follow changes to held and pinned notes. Pitch bend and note expression work on top of that tuning. Without an active MTS master, Weft uses standard tuning.
+
+## Formats and known limitations
+
+CLAP and VST3 for Linux x86-64, Windows x86-64, and universal macOS. Builds are unsigned and macOS builds are not notarized. Audio Unit remains disabled while the Logic editor issue is unresolved.
+
+In reported Bitwig Studio 6.1 tests, CLAP latency may not refresh after changing Resolution. Deactivate and reactivate Weft after a change, especially before exporting. VST3 updated latency correctly in those tests. On Linux, REAPER's CLAP editor may need its UI toggled off and back on the first time it opens.
 
 Weft's undo history is separate from the DAW's project history. The Linux host-shortcut forwarding limitation is not fixed by local undo.
 
-[Manual and downloads](https://oikoaudio.com/weft/)
+[Manual and installation](https://oikoaudio.com/weft/)

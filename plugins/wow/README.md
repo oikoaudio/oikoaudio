@@ -7,7 +7,7 @@
 This product is part of the [Oiko Audio workspace](../../README.md). Shared DSP, typography, window handling, and upstream patches live at the repository root. Clone the complete workspace and use the common `cargo xtask` bundler. See the [engineering principles](../../docs/engineering-principles.md) and [patch register](../../docs/upstream-patches.md).
 
 
-> **Development beta — v0.4.0-beta.1.** Updated builds have not been published yet.
+> **Beta 0.5.0-beta.1.** These plugins are still maturing; sound, controls and automation mappings may change between beta releases. Read the [release notes](RELEASE_NOTES.md) before updating existing projects.
 
 This beta updates the colours and UI and refactors the implementation.
 

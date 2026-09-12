@@ -121,7 +121,7 @@ class ReleaseTests(unittest.TestCase):
             with patch.object(release, "run", return_value="arm64 x86_64") as run:
                 release.build(product, "macOS")
                 self.assertEqual(sum(call.args[0] == "lipo" for call in run.call_args_list), 2)
-                self.assertIn(unittest.mock.call("cargo", "xtask", "bundle-universal", product.package,
+                self.assertIn(unittest.mock.call("cargo", "xtask", "bundle-universal", "-p", product.package,
                                                 "--release", "--locked"), run.call_args_list)
             with patch.object(release, "run", return_value="arm64"):
                 with self.assertRaises(ValueError):

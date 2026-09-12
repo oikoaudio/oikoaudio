@@ -34,7 +34,7 @@ def matrix(product: Product, windows_only=False):
             continue
         artifact = f"{product.key}-{suffix}"
         extension = product.linux_archive if platform == "Linux" else "zip"
-        rows.append(dict(name=name, runner=runner, artifact=artifact,
+        rows.append(dict(platform=platform, name=name, runner=runner, artifact=artifact,
                          archive=f"{artifact}.{extension}"))
     return {"include": rows}
 
@@ -48,31 +48,41 @@ def bundles(product: Product, directory: Path):
 
 
 def test(product: Product):
+    test_selected([product])
+
+
+def test_selected(selected: list[Product]):
     args = ["cargo", "test", "--locked"]
-    for package in product.test_packages:
+    for package in dict.fromkeys(package for product in selected for package in product.test_packages):
         args += ["-p", package]
     run(*args)
 
 
 def build(product: Product, platform: str):
+    build_selected([product], platform)
+
+
+def build_selected(selected: list[Product], platform: str):
     universal = platform == "macOS"
     if universal:
         run("rustup", "target", "add", "aarch64-apple-darwin", "x86_64-apple-darwin")
+    packages = [argument for product in selected for argument in ("-p", product.package)]
     run("cargo", "xtask", "bundle-universal" if universal else "bundle",
-        product.package, "--release", "--locked")
+        *packages, "--release", "--locked")
     if universal:
         directory = ROOT / "target/bundled"
-        for bundle in bundles(product, directory):
-            binary = bundle / "Contents/MacOS" / product.bundle_name
-            architectures = run("lipo", "-archs", str(binary), capture=True).split()
-            if not {"arm64", "x86_64"}.issubset(architectures):
-                raise ValueError(f"{binary} is not universal: {architectures}")
-        # AU distribution is suspended. Preserve the old scripts' stale-output cleanup.
-        component = directory / f"{product.bundle_name}.component"
-        if component.is_symlink() or component.is_file():
-            component.unlink()
-        elif component.is_dir():
-            shutil.rmtree(component)
+        for product in selected:
+            for bundle in bundles(product, directory):
+                binary = bundle / "Contents/MacOS" / product.bundle_name
+                architectures = run("lipo", "-archs", str(binary), capture=True).split()
+                if not {"arm64", "x86_64"}.issubset(architectures):
+                    raise ValueError(f"{binary} is not universal: {architectures}")
+            # AU distribution is suspended. Preserve the old scripts' stale-output cleanup.
+            component = directory / f"{product.bundle_name}.component"
+            if component.is_symlink() or component.is_file():
+                component.unlink()
+            elif component.is_dir():
+                shutil.rmtree(component)
 
 
 def package(product: Product, platform: str, output: Path, source: Path | None = None):
@@ -112,8 +122,8 @@ def package(product: Product, platform: str, output: Path, source: Path | None =
     print(f"Packaged {output}")
 
 
-def publish(product: Product):
-    tag = os.environ["GITHUB_REF_NAME"]
+def publish(product: Product, tag: str | None = None):
+    tag = tag or os.environ["GITHUB_REF_NAME"]
     repo = os.environ["GITHUB_REPOSITORY"]
     product.check_tag(tag)
     archives = [ROOT / "dist" / row["archive"] for row in matrix(product)["include"]]
@@ -143,7 +153,7 @@ def publish(product: Product):
                           "--paginate", "--slurp", capture=True))
     existing = next((release for page in pages for release in page if release["tag_name"] == tag), None)
     if existing and not existing["draft"]:
-        raise ValueError(f"{tag} is already published; use a new version, or rerun only the website update job")
+        raise ValueError(f"{tag} is already published; use a new version for changed assets")
     notes = ["--notes-file", str(product.notes_file)] if product.notes_file else ["--notes", product.notes or ""]
     if not existing:
         # Keep partial uploads hidden until every archive and its metadata is ready.

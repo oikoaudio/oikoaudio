@@ -9,7 +9,6 @@ import subprocess
 import sys
 import tempfile
 import tarfile
-import tomllib
 import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -106,7 +105,7 @@ def main():
     parser.add_argument("--input-archive", type=Path)
     parser.add_argument("--revision")
     args = parser.parse_args()
-    version = tomllib.loads((ROOT / "Cargo.toml").read_text())["package"]["version"]
+    version = products()["inton"].version
     revision = args.revision or subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
     ).strip()

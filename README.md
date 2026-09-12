@@ -39,4 +39,4 @@ Run `python3 scripts/check_workspace.py --test` for formatting, strict Clippy, d
 
 Shared crates stay independent of product-specific dependencies. WoW does not acquire an MTS dependency because Inton and Weft live here. Embedded-editor integration remains in `oiko-plugin`.
 
-Plugins retain their own versions and release schedules. Release tags use `wow/v…`, `weft/v…`, or `inton/v…`. See the [release guide](docs/releases.md) for build triggers and platform archives. The website and Java `bitwig-oikontrol` remain separate repositories.
+Wow, Weft and Inton share one release version, defined in `[workspace.package]` in the root `Cargo.toml`. Update and release them together. Push one `v<version>` tag to build all three together per platform. The workflow publishes separate `wow/v…`, `weft/v…` and `inton/v…` releases. See the [release guide](docs/releases.md) for build triggers and platform archives. The website and Java `bitwig-oikontrol` remain separate repositories.
