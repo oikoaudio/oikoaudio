@@ -123,10 +123,9 @@ impl<'a> PersistentField<'a, Vec<f32>> for CurveState {
             let db = if new_value.len() == MANUAL_MASK_POINTS {
                 new_value[index]
             } else {
-                // Migrate the original 128-point logarithmic curve (and any
-                // future differently sized curve) into the linear FFT-bin
-                // master mask. State restoration has no sample-rate context,
-                // so use the POC's 48 kHz reference range here.
+                // Resample curves of any other length, such as the 128-point
+                // logarithmic format, into the linear FFT-bin master mask.
+                // State loading has no sample rate, so assume a 48 kHz range.
                 let frequency = (index as f32 / (MANUAL_MASK_POINTS - 1) as f32 * 24_000.0)
                     .clamp(20.0, 24_000.0);
                 let normalized = (frequency / 20.0).ln() / (24_000.0_f32 / 20.0).ln();

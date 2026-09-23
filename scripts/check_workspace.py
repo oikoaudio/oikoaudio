@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check shared dependencies and thread boundaries; optionally run the test suites."""
+"""Check vendor sources and crate dependency boundaries; optionally run the test suites."""
 import argparse
 import hashlib
 import json

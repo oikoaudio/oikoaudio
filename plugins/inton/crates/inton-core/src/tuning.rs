@@ -47,7 +47,8 @@ pub fn twelve_edo() -> Preset {
     )
 }
 
-/// An immutable source scale and its validated tuning. Clone only on control/UI threads.
+/// An immutable source scale and its validated tuning. Dropping the last clone frees
+/// the scale, so keep clones off the audio thread.
 #[derive(Clone, Debug)]
 pub struct ValidatedScale(std::sync::Arc<(Preset, Prepared)>);
 impl ValidatedScale {

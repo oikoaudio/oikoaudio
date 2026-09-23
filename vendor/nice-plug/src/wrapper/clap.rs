@@ -35,8 +35,10 @@ pub trait ClapPlugin: Plugin {
     /// browser.
     const CLAP_FEATURES: &'static [ClapFeature];
 
-    /// Advertise MIDI MPE input in addition to ordinary MIDI and native CLAP notes.
-    /// The plugin must implement channel allocation, zone controls and bend ranges.
+    /// Whether the note input port also advertises the MIDI MPE dialect, alongside CLAP notes and
+    /// MIDI. This takes effect only when `Plugin::MIDI_INPUT` is at least `MidiConfig::MidiCCs`.
+    /// Enable it only if the plugin handles MPE itself: member-channel voice allocation, zone
+    /// configuration and per-channel pitch bend ranges.
     const CLAP_SUPPORTS_MPE: bool = false;
 
     /// If set, this informs the host about the plugin's capabilities for polyphonic modulation.

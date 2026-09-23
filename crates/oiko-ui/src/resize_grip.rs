@@ -1,4 +1,5 @@
-//! A corner drag selects a supported zoom; the caller commits it on release.
+//! A corner drag selects a supported interface scale; the caller commits it on
+//! release.
 use egui::{
     Align2, CursorIcon, FontId, Id, LayerId, Order, Pos2, Rect, Sense, Ui, UiBuilder, Vec2,
 };
@@ -28,8 +29,9 @@ impl Drag {
 }
 
 /// Draw on the untransformed root UI, after the product's content. Returns a new
-/// zoom only on release. No viewport commands are issued while dragging: changing
-/// the window or egui zoom then would move the pointer's coordinate reference.
+/// interface scale only on release. No viewport commands are issued while
+/// dragging: changing the window or egui's zoom factor then would move the
+/// pointer's coordinate reference.
 pub fn show(root: &mut Ui, canvas: Vec2, scale: f32) -> Option<f32> {
     let id = Id::new("oiko-resize-grip");
     let context = root.ctx().clone();
@@ -116,7 +118,7 @@ pub fn show(root: &mut Ui, canvas: Vec2, scale: f32) -> Option<f32> {
 
 fn paint_preview(ui: &Ui, viewport: Rect, drag: Drag) {
     let palette = crate::theme::Palette::new(ui.visuals().dark_mode);
-    // Keep the readout legible at any user zoom, fitting even Inton's 50% window.
+    // Keep the readout legible at any interface scale and fit it to small windows.
     let zoom = ui.ctx().zoom_factor();
     let available = viewport.size() * zoom - Vec2::splat(24.0);
     let unit = (available.x / 240.0).min(available.y / 104.0).min(1.0) / zoom;

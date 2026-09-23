@@ -6,6 +6,10 @@ pub(crate) struct PhaseSync {
 }
 
 impl PhaseSync {
+    /// Returns, per LFO, the transport phase in turns of its division (`divisions`
+    /// in beats) when playback starts or jumps or that division changes; otherwise
+    /// `None`. Always `None` while stopped, without a position, or for a
+    /// free-running LFO.
     pub(crate) fn anchors(
         &mut self,
         playing: bool,

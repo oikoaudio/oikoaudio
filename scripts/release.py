@@ -77,7 +77,7 @@ def build_selected(selected: list[Product], platform: str):
                 architectures = run("lipo", "-archs", str(binary), capture=True).split()
                 if not {"arm64", "x86_64"}.issubset(architectures):
                     raise ValueError(f"{binary} is not universal: {architectures}")
-            # AU distribution is suspended. Preserve the old scripts' stale-output cleanup.
+            # AU bundles are not distributed; remove any stale .component output.
             component = directory / f"{product.bundle_name}.component"
             if component.is_symlink() or component.is_file():
                 component.unlink()
@@ -148,7 +148,8 @@ def publish(product: Product, tag: str | None = None):
     checksums = ROOT / "dist/checksums.txt"
     checksums.write_text("".join(f"{file['sha256']}  {file['name']}\n" for file in metadata["files"]), encoding="utf-8")
     # Listing must succeed: an authentication/network error must not be mistaken for
-    # a missing release. Published assets are never replaced (or their counters reset).
+    # a missing release. Published assets are never replaced, which would reset their
+    # download counts.
     pages = json.loads(run("gh", "api", f"repos/{repo}/releases?per_page=100",
                           "--paginate", "--slurp", capture=True))
     existing = next((release for page in pages for release in page if release["tag_name"] == tag), None)

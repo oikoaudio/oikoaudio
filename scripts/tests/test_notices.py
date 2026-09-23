@@ -18,7 +18,7 @@ class NoticeTests(unittest.TestCase):
         self.root = Path(temporary.name)
         self.output = self.root / 'output'
         self.product = SimpleNamespace(key='inton', package='plugin')
-        for name in ['plugins/inton/LICENSE', 'plugins/inton/THIRD_PARTY.md',
+        for name in ['LICENSE-MIT', 'LICENSE-APACHE', 'plugins/inton/THIRD_PARTY.md',
                      'plugins/inton/vendor/mts-esp/LICENSE', 'vendor/tuning-library/LICENSE.md',
                      'crates/oiko-ui/assets/Ubuntu-Font-Licence-1.0.txt']:
             self.write(name, name)
@@ -52,6 +52,8 @@ class NoticeTests(unittest.TestCase):
         inventory = notices.collect(self.product, self.output, self.metadata)
         self.assertEqual({p['name'] for p in inventory}, {'library', 'build-tool'})
         for source, target in [
+            ('LICENSE-MIT', 'LICENSE-MIT'),
+            ('LICENSE-APACHE', 'LICENSE-APACHE'),
             ('registry/library/LICENSE', 'licenses/library-1.0/LICENSE'),
             ('registry/library/fonts/OFL.txt', 'licenses/library-1.0/fonts/OFL.txt'),
             ('vendor/tuning-library/LICENSE.md', 'licenses/tuning-library/LICENSE.md'),

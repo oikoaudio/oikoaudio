@@ -224,9 +224,8 @@ pub(super) fn draw_scale_compared(
             );
         }
     }
-    // Response positions are transformed from global host coordinates back to
-    // this layer's local coordinates. Reading InputState directly here broke
-    // spoke hover whenever the macOS content layer was scaled above 100%.
+    // Use the response's hover position: it is in this layer's local coordinates,
+    // while InputState reports host coordinates that ignore the scaled content layer.
     let hovered_note = response
         .hover_pos()
         .filter(|pos| pos.distance(c) >= 20.)

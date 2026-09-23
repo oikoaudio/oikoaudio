@@ -496,7 +496,7 @@ fn free_clouds_allow_bass_but_choose_it_less_often_than_log_uniform() {
     assert!((0.10..0.25).contains(&(low as f32 / 8192.0)), "{low}");
     assert!(register_strength(40.0_f32.log2()) < register_strength(100.0_f32.log2()));
     assert!(register_strength(100.0_f32.log2()) < register_strength(440.0_f32.log2()));
-    // Source updates through the former cutoff do not introduce a gain step.
+    // Register strength is continuous at 200 Hz.
     assert!(
         (register_strength(199.99_f32.log2()) - register_strength(200.01_f32.log2())).abs() < 1e-4
     );

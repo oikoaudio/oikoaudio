@@ -1,11 +1,13 @@
-//! Host-persisted UI zoom. The serialized field remains a plain f32.
+//! Host-persisted interface scale. Serialized as a plain f32; changing the
+//! format breaks saved state.
 use nice_plug::params::persist::PersistentField;
 use std::sync::{
     Arc,
     atomic::{AtomicU32, Ordering},
 };
 
-/// DEFAULT_PERCENT preserves each product's established initial zoom.
+/// `DEFAULT_PERCENT` is the interface scale used until state is restored.
+/// Values are snapped to a supported step when stored.
 #[derive(Clone)]
 pub struct UiScaleState<const DEFAULT_PERCENT: u32 = 100> {
     value: Arc<AtomicU32>,

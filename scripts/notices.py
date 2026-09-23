@@ -45,7 +45,7 @@ def copy_notice(source, destination):
 
 
 def collect(product, destination, metadata=None):
-    """Write LICENSE, THIRD_PARTY.md, licenses/, and dependency-licenses.json.
+    """Write LICENSE-MIT, LICENSE-APACHE, THIRD_PARTY.md, licenses/, and dependency-licenses.json.
 
     The inventory includes normal/build dependencies across targets. It can contain
     platform-specific packages not linked into a particular platform's binary.
@@ -56,7 +56,8 @@ def collect(product, destination, metadata=None):
             ["cargo", "metadata", "--locked", "--format-version", "1"], cwd=ROOT, text=True))
     destination = Path(destination)
     product_root = ROOT / "plugins" / product.key
-    copy_notice(product_root / "LICENSE", destination / "LICENSE")
+    for name in ("LICENSE-MIT", "LICENSE-APACHE"):
+        copy_notice(ROOT / name, destination / name)
     copy_notice(product_root / "THIRD_PARTY.md", destination / "THIRD_PARTY.md")
     overrides = json.loads((ROOT / "licenses/upstream.json").read_text())
     provenance = {}

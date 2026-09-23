@@ -2,7 +2,7 @@
 name = "inton"
 version.workspace = true
 edition = "2024"
-license = "MIT"
+license.workspace = true
 rust-version = "1.92"
 
 

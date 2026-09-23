@@ -1,34 +1,34 @@
 # Electronic detunings
 
-Ten original twelve-note tunings, from small offsets to pronounced interval changes. Find them in **Factory → Electronic › Detuned 12-note**, or search **detuned**. They retain exact octaves, with C and A fixed at the default mapping and reference.
+The factory library has ten original twelve-note tunings. Their largest offsets from 12 EDO range from 6 cents in Soft Circuit to 38 cents in Warped Grid. Find them under Factory, in the category Electronic › Detuned 12-note, or search for `detuned`. All ten keep exact octaves. C and A stay at their 12 EDO pitches, so they match the default mapping root and reference.
 
 ## Listening suggestions
 
-**Soft Circuit.** Subtle fixed offsets for soft pads and restrained synth chords. Try a simple C minor or A minor chord; compare with 12 EDO using a sustained sound.
+**Soft Circuit.** Small fixed offsets for soft pads and quiet synth chords. Try a simple C minor or A minor chord, and compare it with 12 EDO on a sustained sound.
 
 **Loose Clock.** Small irregular offsets for bass sequences and dry plucks. Try a repeating C, Eb, G, Bb pattern.
 
-**Glass Steps.** Lowered thirds with raised neighboring notes for glassy arpeggios and synth chords. Try C, E, G, Bb with a bright, harmonically rich patch.
+**Glass Steps.** Lowered thirds next to raised neighboring notes, for glassy arpeggios and synth chords. Try C, E, G, Bb with a bright, harmonically rich patch.
 
-**Bent Fifths.** A narrowed C-G fifth introduces tension into otherwise familiar shapes. Try sustained C-G dyads or a two-note bass ostinato. This is deliberately imperfect, not just intonation.
+**Bent Fifths.** A narrowed C-G fifth adds tension to familiar chord shapes. Try sustained C-G dyads or a two-note bass ostinato. The fifth is deliberately out of tune. This is not a just intonation scale.
 
-**Split Neon.** Alternating offsets make neighboring steps expand and contract. Try chromatic plucks or a short repeating sequence. C and A stay fixed as tonal anchors.
+**Split Neon.** Alternating offsets of 18 cents make neighboring steps alternately wider and narrower. Try chromatic plucks or a short repeating sequence. C and A stay fixed as tonal anchors.
 
-**Oxide.** Stronger irregular offsets for tense pads, rough-edged stabs, and sparse melodies. Try C, Eb, F, G, Bb with long releases to expose the changing intervals.
+**Oxide.** Larger irregular offsets for tense pads, rough stabs and sparse melodies. Try C, Eb, F, G, Bb with long releases to expose the changing intervals.
 
-**Ripple.** Groups of rising offsets followed by a reset give scalar lines an uneven contour. Try ascending semitones on a clean pluck before moving to a longer sequence.
+**Ripple.** The offsets rise in groups and then drop back, so scale runs move in uneven steps. Try ascending semitones on a clean pluck before moving to a longer sequence.
 
-**Warped Grid.** Pronounced opposing offsets for angular leads and dissonant chord fragments. Start with two or three notes. Octaves remain exact even as the intervals inside them pull apart.
+**Warped Grid.** Large offsets in alternating directions, for angular leads and dissonant chord fragments. Start with two or three notes. Octaves stay exact while the intervals inside them change.
 
-**Frayed Thirds.** A nearly pure C–G fifth frames a widened C–E third and narrowed C–Eb third. Hold C–G, then add E or Eb to hear the extra beating.
+**Frayed Thirds.** A nearly pure C-G fifth combines with a widened C-E third and a narrowed C-Eb third. Hold C-G, then add E or Eb to hear the extra beating.
 
-**Restless Fifths.** A nearly pure C–E major third meets a narrowed C–G fifth. Hold C–E, then add G. Try a sustained saw or pulse sound.
+**Restless Fifths.** A nearly pure C-E major third combines with a narrowed C-G fifth. Hold C-E, then add G. Try a sustained saw or pulse sound.
 
-Frayed Thirds has a 408-cent C–E third and 702-cent C–G fifth. Restless Fifths uses 386 and 691 cents. Compare them with a sustained C–E–G chord: one emphasises beating around the third, the other around the fifth. The amount you hear depends on register and the patch’s harmonics.
+Frayed Thirds has a 408-cent C-E third and a 702-cent C-G fifth. Restless Fifths has a 386-cent third and a 691-cent fifth. Play a sustained C-E-G chord in each. Frayed Thirds beats mostly in the third, and Restless Fifths beats mostly in the fifth. How much beating you hear depends on the register and the patch's harmonics.
 
 ## Exact offsets
 
-Cents from 12 EDO, ordered C through B:
+Each value is the offset in cents from 12 EDO, from C to B:
 
 | Preset | C | C♯ | D | E♭ | E | F | F♯ | G | A♭ | A | B♭ | B |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -43,4 +43,4 @@ Cents from 12 EDO, ordered C through B:
 | Frayed Thirds | 0 | -5 | +4 | -8 | +8 | -2 | +7 | +2 | -6 | 0 | +9 | -4 |
 | Restless Fifths | 0 | +6 | +2 | -9 | -14 | +10 | -4 | -9 | +7 | 0 | -11 | -3 |
 
-The original Oiko offsets and generated resources are CC0-1.0. Definitions are in `scripts/electronic-detunings.json`.
+The original Oiko offsets and the generated resources are CC0-1.0. The definitions are in `scripts/electronic-detunings.json`.

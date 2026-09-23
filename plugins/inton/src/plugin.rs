@@ -76,7 +76,7 @@ unsafe impl Params for IntonParams {
     }
 
     fn deserialize_fields(&self, fields: &BTreeMap<String, String>) {
-        // The wrapper preflights the full state before setting any parameters.
+        // NicePlug preflights the full state before setting any parameters.
         // Decode again here so direct callers also use the validated load path.
         let result = fields
             .get("inton-project-v1")
@@ -425,7 +425,7 @@ impl ClapPlugin for IntonPlugin {
 }
 
 impl Vst3Plugin for IntonPlugin {
-    // Permanent identity for Oiko Inton's first VST3 build.
+    // Published VST3 class ID. Never change it: hosts use it to find saved instances.
     const VST3_CLASS_ID: [u8; 16] = [
         0x5b, 0x4e, 0x8d, 0x4b, 0xe8, 0x85, 0x47, 0x64, 0xa6, 0xf8, 0x2e, 0xcb, 0xd8, 0x43, 0x0f,
         0x68,

@@ -78,7 +78,8 @@ impl Client {
         }
         result
     }
-    // Bounded, allocation-free copy. MTS names contain at most 255 bytes plus NUL.
+    /// Current MTS scale name, NUL-terminated and truncated to 255 bytes; all
+    /// zeros when no name is available. Allocation-free.
     pub fn name_bytes(&mut self) -> [u8; 256] {
         let mut bytes = [0; 256];
         let name = unsafe { MTS_GetScaleName(self.0) };

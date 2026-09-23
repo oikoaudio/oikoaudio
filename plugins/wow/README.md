@@ -2,71 +2,72 @@
 
 [Product page](https://oikoaudio.com/wow/)
 
-## Shared Rust foundation
+> **Beta 0.5.0-beta.1.** These plugins are still in beta, so sound, controls and automation mappings may change between beta releases. Read the [release notes](RELEASE_NOTES.md) before updating existing projects.
 
-This product is part of the [Oiko Audio workspace](../../README.md). Shared DSP, typography, window handling, and upstream patches live at the repository root. Clone the complete workspace and use the common `cargo xtask` bundler. See the [engineering principles](../../docs/engineering-principles.md) and [patch register](../../docs/upstream-patches.md).
+**[Download Wow](https://oikoaudio.com/downloads/#wow)** for macOS, Windows, and Linux.
 
+Wow is a free and open-source pitch-modulation plugin for macOS, Windows, and Linux. It continuously changes playback speed to create slow warble, fast flutter, and natural drift. It adds no saturation, hiss, dropouts, or EQ.
 
-> **Beta 0.5.0-beta.1.** These plugins are still maturing; sound, controls and automation mappings may change between beta releases. Read the [release notes](RELEASE_NOTES.md) before updating existing projects.
+Wow reproduces unstable pitch without the unrelated digital artifacts that conventional interpolation adds. Low Amount settings give subtle movement, and high settings give deliberately extreme modulation.
 
-This beta updates the colours and UI and refactors the implementation.
+Drag the bottom-right corner to choose a zoom level from 50% to 200% in 25% steps. The selected percentage appears in the center, and the window resizes when you release. The aspect ratio stays fixed. Press Escape during the drag to cancel.
 
-**[Download previous beta (v0.1.1-beta.3)](https://github.com/oikoaudio/wow/releases/tag/v0.1.1-beta.3)** for macOS, Windows, and Linux.
+## How Wow reads between samples
 
-Wow is a free and open-source pitch-modulation plug-in for macOS, Windows, and Linux. It creates slow warble, fast flutter, and natural drift by continuously changing playback speed, without adding saturation, hiss, dropouts, or EQ.
+To change playback speed, Wow reads audio between its stored samples. A simple interpolator is cheap, but it can lose high frequencies, add unrelated tones, and alias near Nyquist. These artifacts are separate from the sidebands that pitch modulation itself produces.
 
-It captures the soft, unsteady feeling of unstable pitch while suppressing unrelated digital artifacts from conventional interpolation. The effect ranges from subtle movement to deliberately extreme modulation.
+Wow uses a polyphase windowed-sinc fractional-delay reader. When playback speeds up, the reader's low-pass cutoff follows the instantaneous rate. It removes frequencies that would cross the output Nyquist limit before they can fold back. Wow builds the filter banks outside the audio thread and interpolates smoothly between them during processing. Wow keeps the physically correct FM sidebands and treats any extra interpolation spurs or foldback as errors.
 
-Drag the bottom-right corner to choose a zoom level from 50% to 200% in 25% steps. The selected percentage appears in the center; release to resize the window. The aspect ratio stays fixed. Press Escape during the drag to cancel.
+HQ mode is the default. Normal costs less processing than HQ and is less accurate. Ultra costs more and is more accurate. Draft uses a simpler cubic interpolator for comparison and low-cost use.
 
-## Why clean modulation matters
-
-Changing playback speed means reading audio between its stored samples. A simple interpolator is inexpensive, but it can add high-frequency loss, unrelated tones, and aliasing near Nyquist. These artifacts are separate from the sidebands produced by pitch modulation itself.
-
-Wow uses a polyphase windowed-sinc fractional-delay reader. When playback speeds up, its low-pass cutoff follows the instantaneous rate so frequencies that would cross the output Nyquist limit are removed before they can fold back. The filter banks are built outside the audio thread and interpolated smoothly during processing. Physically correct FM sidebands remain, while additional interpolation spurs and foldback are treated as errors.
-
-HQ mode is the default. Normal and Ultra trade processing cost against progressively tighter spectral accuracy, while Draft retains a simpler cubic interpolator for comparison and low-cost use.
-
-The distinction matters most on exposed high frequencies and when several modulated signals are layered. It also gives the same DSP core a clean basis for future modulated-delay and feedback effects.
+The difference is most audible on exposed high frequencies and when you layer several modulated signals. The same fractional-delay reader in the shared `oiko-dsp` crate can also serve future modulated-delay and feedback effects.
 
 ## Controls
 
 - **Wow Rate** sets the slow oscillator from 0.1 to 4 Hz.
 - **Flutter Rate** sets the fast oscillator from 6 to 30 Hz.
-- **Wow / Flutter** blends their contributions with a constant-power law. The slider shows the Wow share, so 90/10 is 90% full. Moving right adds Wow; moving left adds Flutter.
-- **Amount** controls the total pitch movement.
+- **Wow / Flutter** blends the two oscillators with a constant-power law. The slider shows the Wow share, so 90/10 is 90% full. Moving right adds Wow, and moving left adds Flutter.
+- **Amount** sets the total pitch movement.
 - **Drift** adds repeatable, smoothly changing variation to both oscillator rates.
-- **Phase** rotates both oscillators through a full cycle. The blue pointer shows the common phase offset. Drag the dial or its degree readout; hold Shift for fine adjustment. The control wraps through zero, and automation follows the shortest circular path with a 20 ms smoothing time constant. Fast phase changes can still produce pitch movement, with the existing delay-slew limit bounding the transition.
-- **Stereo spread**, shown by the paired-circle symbol beneath Phase, separates left and right symmetrically by up to 180 degrees. Drag its orange degree value or Alt-drag the Phase dial to adjust it. Hold Shift for fine adjustment. The orange arc shows that spread around the phase pointer and wraps naturally across zero. Zero spread keeps the channels linked.
+- **Phase** rotates both oscillators through a full cycle. The blue pointer shows the common phase offset. Drag the dial or its degree readout, and hold Shift for fine adjustment. The control wraps through zero. Automation follows the shortest circular path with a 20 ms smoothing time constant. Fast phase changes still move pitch, but Wow limits how fast the delay changes during the transition.
+- **Stereo spread** separates left and right symmetrically by up to 180 degrees. Its paired-circle symbol sits beneath Phase. Drag its orange degree value or Alt-drag the Phase dial to adjust it, and hold Shift for fine adjustment. The orange arc shows the spread around the phase pointer and wraps across zero. At zero spread the channels stay linked.
 
-The Hz and musical-note choices beside each rate value switch that oscillator independently between free Hz and host-tempo sync. The active choice is highlighted. In SYNC, divisions occupy their equivalent Hz positions on the knob. Switching from FREE selects the nearest in-range division; switching back keeps its equivalent Hz speed. Dotted divisions use D and triplets use T. Hover over a synced knob to see its Hz rate. Tempo changes retain the chosen division while it fits the oscillator’s range; outside that range, the nearest in-range division plays and is displayed until the chosen division fits again. The Wow / Flutter balance and both Pitch Range modes keep their existing depth laws.
+Each rate value has an Hz choice and a musical-note choice beside it. They switch that oscillator between free Hz and host-tempo sync, independently of the other oscillator. The active choice is highlighted. In SYNC, each division sits at its equivalent Hz position on the knob. Switching from FREE selects the nearest in-range division. Switching back keeps the division's equivalent Hz speed. Dotted divisions show D and triplets show T. Hover over a synced knob to see its Hz rate.
 
-Synced oscillators anchor their phase to the song beat position when playback starts, loops or seeks, and when their sync division changes or sync is enabled during playback. Their phase and seeded Drift restart from that reference; a running delay transitions smoothly onto the new phase. Free-Hz oscillators keep running independently. Modulation continues while transport is stopped. Drift allows intentional wandering after each anchor; set Drift to zero to stay on the beat grid after the transition settles. If song position is unavailable, sync follows tempo without re-anchoring. If tempo is unavailable or outside the supported 1–960 BPM range, Wow retains the last valid tempo, initially 120 BPM. New instances and older sessions start with both rates in FREE mode.
+When the tempo changes, Wow keeps the chosen division while it fits the oscillator's range. Outside that range, Wow plays and displays the nearest in-range division until the chosen division fits again. Sync does not change the depth laws of the Wow / Flutter balance or of either Pitch Range mode.
 
-The display shows the combined left and right motion produced by the current settings. Random Seed makes Drift repeatable when a session is reopened.
+Synced oscillators anchor their phase to the song beat position in these cases:
+
+- playback starts, loops, or seeks;
+- the oscillator's sync division changes during playback;
+- sync is turned on during playback.
+
+At each anchor, the oscillator's phase and seeded Drift restart from the beat position, and a running delay moves smoothly onto the new phase. Free-Hz oscillators keep running independently. Modulation continues while the transport is stopped. Drift wanders away from the beat after each anchor. Set Drift to zero to stay on the beat grid once the transition settles. If the host gives no song position, sync follows tempo without re-anchoring. If the host gives no tempo, or a tempo outside 1 to 960 BPM, Wow keeps the last valid tempo, which starts at 120 BPM. New instances and older sessions start with both rates in FREE mode.
+
+The display shows the combined left and right motion of the current settings. Random Seed makes Drift repeat the same way when you reopen a session.
 
 New instances open at 0.6 Hz Wow, 12 Hz Flutter, a 90/10 Wow/Flutter balance, 50% Amount, 50% Drift, and a mono-linked 0° L/R phase offset.
 
-The footer contains two less frequently changed settings:
+The footer holds two settings you change less often:
 
-- **Quality:** Draft, Normal, HQ, or Ultra. HQ is the default.
-- **Pitch Range:** Rate-scaled keeps the delay excursion bounded, so faster settings produce greater pitch movement. Constant keeps the perceived pitch range more consistent across oscillator rates and requires more latency.
+- **Quality** selects Draft, Normal, HQ, or Ultra. HQ is the default.
+- **Pitch Range** selects Rate-scaled or Constant. Rate-scaled keeps the delay excursion bounded, so faster rates give more pitch movement. Constant keeps the perceived pitch range more even across oscillator rates and needs more latency.
 
-At 48 kHz, Rate-scaled reports about 8.0 ms of latency. Constant mode reports about 34.2 ms. The host is responsible for compensating that latency.
+At 48 kHz, Rate-scaled reports about 8.0 ms of latency and Constant reports about 34.2 ms. The host compensates for that latency.
 
 ## Formats and platforms
 
-Wow exports mono and stereo **CLAP** and **VST3** plug-ins for:
+Wow comes as mono and stereo CLAP and VST3 plugins for:
 
 - macOS on Apple Silicon and Intel;
 - Windows x86-64;
 - Linux x86-64.
 
-The current builds are unsigned public-beta builds and are not yet notarized. Operating-system security warnings are therefore expected. Only install an archive downloaded from this repository.
+The public-beta builds are unsigned and not yet notarized, so expect security warnings from the operating system. Only install an archive downloaded from this repository.
 
 ## Installing the beta
 
-Download the archive for your platform from the beta release and copy either or both plug-in bundles to the appropriate user or system folder:
+Download the archive for your platform from the beta release. Copy the CLAP bundle, the VST3 bundle, or both to the user or system folder for that format:
 
 | Platform | CLAP | VST3 |
 |---|---|---|
@@ -74,24 +75,26 @@ Download the archive for your platform from the beta release and copy either or 
 | Windows | `C:\Program Files\Common Files\CLAP` | `C:\Program Files\Common Files\VST3` |
 | Linux | `~/.clap` | `~/.vst3` |
 
-Restart the DAW and rescan its plug-ins after installation. Because this beta is unsigned, macOS and Windows may require you to explicitly allow it in the operating system's security settings.
+After installing, restart the DAW and rescan its plugins. This beta is unsigned, so macOS and Windows may ask you to allow it in the operating system's security settings.
 
 ## Beta testing and reports
 
-Compatibility reports, automation behaviour, sound at extreme settings, and general usability feedback are especially useful. Please use the [beta report form](https://github.com/oikoaudio/oikoaudio/issues/new?template=bug-report.yml) and include the operating system, DAW and version, plug-in format, sample rate, buffer size, and exact reproduction steps.
+Reports on host compatibility, automation behaviour, sound at extreme settings, and general usability help most. Please use the [beta report form](https://github.com/oikoaudio/oikoaudio/issues/new?template=bug-report.yml). Include the operating system, DAW and version, plugin format, sample rate, buffer size, and exact steps to reproduce the problem.
 
 Known beta limitations:
 
-- builds are not signed or notarized;
-- changing Pitch Range changes reported latency and may make the host restart processing;
-- Draft quality is a deliberately lower-cost audition mode rather than the cleanest production setting;
-- host and platform compatibility is still being established through this beta.
+- Builds are not signed or notarized.
+- Changing Pitch Range changes the reported latency, and the host may restart processing.
+- Draft quality is a low-cost audition mode, not the cleanest production setting.
+- This beta is still testing which hosts and platforms work.
 
 ## Signal quality
 
-Normal, HQ, and Ultra use rate-aware windowed-sinc readers with 80, 96, and 128 taps respectively. Their low-pass cutoff follows the instantaneous playback rate, preserving nearly the full input band around normal speed while suppressing frequencies that would otherwise fold below Nyquist. Draft uses a lower-cost cubic interpolator for auditioning and comparison.
+Normal, HQ, and Ultra use rate-aware windowed-sinc readers with 80, 96, and 128 taps. Their low-pass cutoff follows the instantaneous playback rate. Around normal speed they keep nearly the full input band, and they suppress frequencies that would otherwise fold below Nyquist. Draft uses a lower-cost cubic interpolator for auditioning and comparison.
 
 ## Building
+
+This product is part of the [Oiko Audio workspace](../../README.md). Shared DSP, typography, window handling, and upstream patches live at the repository root. Clone the complete workspace and use the shared `cargo xtask` bundler. See the [engineering principles](../../docs/engineering-principles.md) and [patch register](../../docs/upstream-patches.md).
 
 Install a current stable Rust toolchain, then run from the repository root:
 
@@ -108,19 +111,19 @@ On macOS, build universal Apple Silicon and Intel CLAP and VST3 bundles with:
 python3 scripts/release.py build wow --platform macOS
 ```
 
-Audio Unit distribution is temporarily disabled because the AUv2 editor crashes Logic Pro's out-of-process Audio Unit host on macOS 26 despite passing `auval`. The AU packaging project remains in the repository for explicit compatibility testing after the upstream GUI-hosting path is fixed.
+Releases do not include an Audio Unit build for now. The AUv2 editor passes `auval` but crashes Logic Pro's out-of-process Audio Unit host on macOS 26. The AU packaging project stays in the repository so you can test compatibility once the upstream GUI-hosting path is fixed.
 
-The release workflow tests WoW and creates CLAP and VST3 archives for Linux x86_64, Windows x86_64, and universal macOS on `wow/v*` release tags or manual runs. Only pushed release tags publish a GitHub release. Pull requests run workspace checks. See the [release guide](../../docs/releases.md).
+The release workflow tests Wow and creates CLAP and VST3 archives for Linux x86_64, Windows x86_64, and universal macOS on `wow/v*` release tags or manual runs. Only pushed release tags publish a GitHub release. Pull requests run workspace checks. See the [release guide](../../docs/releases.md).
 
 ## Repository layout
 
 ```text
 crates/wow-dsp    Host-independent, real-time DSP core
 crates/wow-plugin CLAP/VST3 wrapper and native editor
-../../xtask       Shared plug-in bundle builder
+../../xtask       Shared plugin bundle builder
 ../../scripts     Shared build and release tooling
 ```
 
 ## License
 
-MIT
+MIT OR Apache-2.0, at your option. See `LICENSE-MIT` and `LICENSE-APACHE` at the repository root.

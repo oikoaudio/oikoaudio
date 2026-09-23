@@ -101,7 +101,8 @@ impl Adapter {
     }
     /// Apply one common motion field after ordinary note/manual masks. Freeze
     /// the previous field at mode changes, then crossfade for 50 ms even with
-    /// Smooth disabled. Normal looping modes keep their existing compensation.
+    /// Smooth disabled. Returns whether `apply` must run this frame; outside a
+    /// transition, looping shapes are applied by the ordinary mask instead.
     pub fn begin_frame(&mut self, config: MotionConfig, bin_hz: f32, bins: usize) -> bool {
         if config.shape != self.last_shape {
             if config.shape.is_particle()

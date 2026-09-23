@@ -1,15 +1,24 @@
 //! Validated SCL/KBM parsing for a complete 128-note tuning table.
-//! No GUI, plug-in framework, or MTS dependency. Parsing is not realtime-safe.
+//! No GUI, plugin framework, or MTS dependency. Parsing is not realtime-safe.
 use std::ffi::{CString, c_char, c_int};
+/// Largest accepted SCL or KBM text, in bytes.
 pub const MAX_TUNING_BYTES: usize = 1_048_576;
+/// A parsed scale mapped onto every MIDI note.
 #[derive(Clone, Debug)]
 pub struct Prepared {
+    /// Each SCL interval in cents, in file order; the last entry is the period.
     pub degrees_cents: Vec<f64>,
+    /// Frequency of each MIDI note, scaled so the reference note sounds at 440 Hz.
     pub hz: [f64; 128],
+    /// Period as a frequency ratio, such as 2.0 for an octave.
     pub period: f64,
+    /// Number of SCL intervals; equals `degrees_cents.len()`.
     pub count: usize,
+    /// KBM reference note, in -256..=255; may lie outside the MIDI range.
     pub reference_note: i32,
+    /// KBM root note (the note that plays scale degree zero).
     pub root_note: i32,
+    /// Reference frequency declared by the KBM, in Hz.
     pub original_reference: f64,
 }
 unsafe extern "C" {
@@ -28,8 +37,15 @@ unsafe extern "C" {
     ) -> c_int;
 }
 
+/// Parses SCL text and optional KBM text into a complete 128-note tuning.
+///
+/// Without a KBM, the scale starts on MIDI note 60 and note 69 is the 440 Hz
+/// reference. Fails with a user-readable message when either text exceeds
+/// `MAX_TUNING_BYTES`, declares more than 4096 entries, is malformed, leaves
+/// any MIDI note unmapped, or produces a non-finite frequency.
 pub fn prepare(scl_text: &str, kbm_text: Option<&str>) -> Result<Prepared, String> {
     // Bound user input before entering the parser, including declared allocation counts.
+    // `index` is the line holding the declared count, after comments: SCL 1, KBM 0.
     for (text, index) in [(Some(scl_text), 1), (kbm_text, 0)] {
         if let Some(text) = text {
             if text.len() > MAX_TUNING_BYTES {

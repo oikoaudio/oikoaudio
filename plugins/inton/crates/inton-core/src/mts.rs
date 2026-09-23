@@ -24,6 +24,7 @@ impl MasterStatus {
         }
     }
 }
+/// The MTS-ESP master functions used by `Master`.
 pub trait MasterApi {
     fn available(&self) -> bool;
     fn can_register(&self) -> bool;
@@ -37,6 +38,8 @@ pub trait MasterApi {
     fn reinitialize(&mut self) {}
 }
 static OWNERSHIP: Mutex<()> = Mutex::new(());
+/// Registers as the MTS-ESP master while enabled and publishes tuning tables.
+/// Deregisters when disabled or dropped.
 pub struct Master<A: MasterApi> {
     api: A,
     owned: bool,
@@ -50,9 +53,14 @@ impl<A: MasterApi> Master<A> {
             last: None,
         }
     }
+    /// Number of connected MTS clients; 0 while this instance is not the master.
     pub fn clients(&self) -> usize {
         if self.owned { self.api.clients() } else { 0 }
     }
+    /// Register if enabled and no other master is registered, then publish the table
+    /// (frequencies in Hz per MIDI note, scale name, period ratio) if it has changed.
+    /// Deregisters when `enabled` is false. Returns `Error` without publishing when any
+    /// frequency is non-finite or not positive.
     pub fn update(
         &mut self,
         enabled: bool,
@@ -68,7 +76,10 @@ impl<A: MasterApi> Master<A> {
             && self.api.supports_recovery()
             && !self.api.can_register()
     }
-    /// Only call in response to the user's explicit reset action after a suspected crash.
+    /// Like `update`, but when another master appears registered and the library
+    /// supports it, first reinitializes libMTS. That discards the other master's
+    /// registration even if it is still running, so call this only on an explicit user
+    /// reset after a crashed master left a stale registration.
     pub fn recover_and_update(
         &mut self,
         enabled: bool,

@@ -10,8 +10,10 @@ use spectral_dsp::{MANUAL_CURVE_MUTE_DB, MIDI_NOTES, MIN_DISPLAY_FREQUENCY_HZ};
 use std::sync::atomic::{AtomicU32, Ordering};
 pub(crate) const ANALYZER_POINTS: usize = 256;
 const PARTICLE_BINS: usize = crate::parameters::MAX_FFT_SIZE / 2 + 1;
-/// Coherent decimated copy of the actual motion multiplier, including mode
-/// crossfades and smoothed Depth. UI interpolation does not add FFT resolution.
+/// Coherent copy of the motion gains applied after the ordinary mask: particle
+/// shapes and crossfades to or from them. `active` is false otherwise, and the
+/// editor then draws looping shapes from their parameters. UI interpolation
+/// does not add FFT resolution.
 pub(crate) struct ParticleMask {
     gains: [f32; PARTICLE_BINS],
     bins: usize,
@@ -126,7 +128,8 @@ impl AnalysisDisplay {
         self.motion_phase.store(phase.to_bits(), Ordering::Release);
     }
 
-    /// Single audio writer, coherent seqlock observation. Publication never
+    /// Publish the gains read back as `ParticleMask`. Single audio writer,
+    /// coherent seqlock observation. Publication never
     /// waits or retries; UI rejects an overlapping read and retains its frame.
     pub(crate) fn store_particles(&self, gains: &[f32], bin_hz: f32, active: bool) {
         self.particle_generation.fetch_add(1, Ordering::SeqCst);

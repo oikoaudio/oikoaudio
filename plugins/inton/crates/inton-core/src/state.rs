@@ -3,21 +3,27 @@ use crate::{
     tuning::{Preset, ValidatedScale, twelve_edo},
 };
 use serde::{Deserialize, Serialize};
+/// Number of slots in a project.
 pub const SET_SIZE: usize = 32;
+/// Largest encoded project that decoding accepts.
 pub const MAX_STATE_BYTES: usize = 72 * 1024 * 1024;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Project {
     pub version: u32,
     pub parameters: Parameters,
     pub slots: Vec<Option<Preset>>,
-    /// Added slots remain available after their contents are cleared.
+    /// Bit n is set once slot n has been added; the slot stays listed after its contents
+    /// are cleared.
     #[serde(default)]
     pub allocated_slots: u32,
+    /// Whether the project is shown as a scale set rather than a single scale.
     #[serde(default)]
     pub scale_set: bool,
+    /// Whether the editor shows the scale set folded.
     #[serde(default)]
     pub set_collapsed: bool,
-    // Preserve the audible table even if the selected slot is empty or was cleared.
+    /// Held table: log2 frequencies in Hz that keep sounding while the selected slot is
+    /// empty. Ignored when the selected slot has contents.
     #[serde(default)]
     pub held_log: Option<Vec<f64>>,
     #[serde(default)]
@@ -144,7 +150,8 @@ pub fn moved_index(index: usize, from: usize, to: usize) -> usize {
     }
 }
 
-/// Prepared load transaction. The serialized Project remains the public wire format.
+/// A `Project` whose scales have all been parsed, ready to restore without re-parsing.
+/// Only `Project` is serialized.
 #[derive(Clone)]
 pub struct ValidatedProject {
     pub(crate) project: Project,

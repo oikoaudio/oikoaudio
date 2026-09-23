@@ -3,21 +3,32 @@ use crate::gestures::ParameterWriter;
 use egui::{Rect, Response, Ui};
 use nice_plug::params::Param;
 
+/// How pointer movement maps to a normalized parameter value.
 #[derive(Clone, Copy)]
 pub enum DragMode {
+    /// Moves the value from where the drag started.
     Relative {
+        /// Normalized change per point of upward movement.
         sensitivity: f32,
+        /// Contribution of rightward movement relative to upward movement.
         horizontal_weight: f32,
+        /// Sensitivity multiplier while Shift is held.
         fine_scale: f32,
     },
+    /// Sets the value from the pointer's horizontal position.
     Absolute {
+        /// Pointer span mapped to 0..1, left to right.
         range: Rect,
+        /// With Shift held, moves the value from where the drag started by
+        /// this normalized change per point (rightward or upward). `None`
+        /// disables fine adjustment.
         fine_sensitivity: Option<f32>,
     },
 }
 
-/// One host gesture across drag frames. Shift behaviour stays explicit at each
-/// control; focus loss and editor closure are handled by ParameterGestures.
+/// Wraps a drag in one host gesture and sets `param` according to `mode`.
+/// Gestures interrupted by focus loss or editor close are ended by
+/// `ParameterGestures::finish`.
 pub fn parameter_drag<P: Param>(
     ui: &Ui,
     response: &Response,
@@ -37,8 +48,10 @@ pub fn parameter_drag<P: Param>(
     );
 }
 
-/// Use a display-space position and inverse mapping while retaining host gesture semantics.
-/// This lets musical divisions occupy their equivalent Hz positions on a rate control.
+/// `parameter_drag` for a control whose visual scale differs from the
+/// parameter's own normalization. `mapping` holds the current display-space
+/// position (0..1) and a function from a display-space position to the
+/// parameter's plain value.
 pub fn parameter_drag_mapped<P: Param>(
     ui: &Ui,
     response: &Response,

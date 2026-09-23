@@ -9,12 +9,12 @@
 +mod regression_tests;
 --- a/src/params/boolean.rs
 +++ b/src/params/boolean.rs
-@@ -175,21 +175,25 @@
-         // REAPER spams automation events with the same value. This prevents callbacks from firing
-         // multiple times. This can be problematic when they're used to trigger expensive
-         // computations when a parameter changes.
-+        // The base value must change even when modulation or quantization keeps
-+        // the effective value unchanged. Only the effective-value callback is deduplicated.
+@@ -172,24 +172,28 @@
+             (self.preview_plain(normalized_value), normalized_value)
+         };
+ 
++        // Store the unmodulated value even when modulation or quantization leaves the modulated
++        // value unchanged. Only the `value_changed` callback is deduplicated.
 +        self.normalized_value
 +            .store(normalized_value, Ordering::Relaxed);
 +        let base_changed = self
@@ -23,6 +23,9 @@
 +            != unmodulated_value;
 +        self.unmodulated_normalized_value
 +            .store(unmodulated_normalized_value, Ordering::Relaxed);
+         // REAPER spams automation events with the same value. This prevents callbacks from firing
+         // multiple times. This can be problematic when they're used to trigger expensive
+         // computations when a parameter changes.
          let old_value = self.value.swap(value, Ordering::Relaxed);
          if value != old_value {
 -            self.normalized_value
@@ -44,12 +47,12 @@
  
 --- a/src/params/float.rs
 +++ b/src/params/float.rs
-@@ -209,21 +209,25 @@
-         // REAPER spams automation events with the same value. This prevents callbacks from firing
-         // multiple times. This can be problematic when they're used to trigger expensive
-         // computations when a parameter changes.
-+        // The base value must change even when modulation or quantization keeps
-+        // the effective value unchanged. Only the effective-value callback is deduplicated.
+@@ -206,24 +206,28 @@
+             (self.preview_plain(normalized_value), normalized_value)
+         };
+ 
++        // Store the unmodulated value even when modulation or quantization leaves the modulated
++        // value unchanged. Only the `value_changed` callback is deduplicated.
 +        self.normalized_value
 +            .store(normalized_value, Ordering::Relaxed);
 +        let base_changed = self
@@ -58,6 +61,9 @@
 +            != unmodulated_value;
 +        self.unmodulated_normalized_value
 +            .store(unmodulated_normalized_value, Ordering::Relaxed);
+         // REAPER spams automation events with the same value. This prevents callbacks from firing
+         // multiple times. This can be problematic when they're used to trigger expensive
+         // computations when a parameter changes.
          let old_value = self.value.swap(value, Ordering::Relaxed);
          if value != old_value {
 -            self.normalized_value
@@ -79,12 +85,12 @@
  
 --- a/src/params/integer.rs
 +++ b/src/params/integer.rs
-@@ -189,21 +189,25 @@
-         // REAPER spams automation events with the same value. This prevents callbacks from firing
-         // multiple times. This can be problematic when they're used to trigger expensive
-         // computations when a parameter changes.
-+        // The base value must change even when modulation or quantization keeps
-+        // the effective value unchanged. Only the effective-value callback is deduplicated.
+@@ -186,24 +186,28 @@
+             (self.preview_plain(normalized_value), normalized_value)
+         };
+ 
++        // Store the unmodulated value even when modulation or quantization leaves the modulated
++        // value unchanged. Only the `value_changed` callback is deduplicated.
 +        self.normalized_value
 +            .store(normalized_value, Ordering::Relaxed);
 +        let base_changed = self
@@ -93,6 +99,9 @@
 +            != unmodulated_value;
 +        self.unmodulated_normalized_value
 +            .store(unmodulated_normalized_value, Ordering::Relaxed);
+         // REAPER spams automation events with the same value. This prevents callbacks from firing
+         // multiple times. This can be problematic when they're used to trigger expensive
+         // computations when a parameter changes.
          let old_value = self.value.swap(value, Ordering::Relaxed);
          if value != old_value {
 -            self.normalized_value
@@ -114,13 +123,14 @@
  
 --- a/src/plugin.rs
 +++ b/src/plugin.rs
-@@ -214,6 +214,13 @@
+@@ -214,6 +214,14 @@
      /// This is an advanced feature that the vast majority of plugins won't need to implement.
      fn filter_state(state: &mut PluginState) {}
  
-+    /// Validate a migrated state before the wrapper changes parameters or persisted fields.
-+    /// Return an error to reject the complete load without changing the live state.
-+    /// This runs after `filter_state` for both host and plug-in initiated loads.
++    /// Check a state after [`filter_state()`][Self::filter_state()] and before any parameter or
++    /// persistent field changes. Returning an error rejects the whole load and leaves the current
++    /// state unchanged; the message is logged at trace level. Called for both host-initiated and
++    /// plugin-initiated state loads.
 +    fn validate_state(state: &PluginState) -> Result<(), String> {
 +        Ok(())
 +    }

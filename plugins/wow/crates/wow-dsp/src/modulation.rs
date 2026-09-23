@@ -6,8 +6,8 @@
 
 use std::f64::consts::{SQRT_2, TAU};
 
-/// Greatest absolute value of any normalized waveform antiderivative below.
-/// The rounded-square waveform reaches exactly 7/6 at phase zero.
+/// Greatest absolute value of `shape_primitive` over all phases and shapes.
+/// The rounded-square shape reaches exactly 7/6 at phase zero.
 pub const MAX_SHAPE_PRIMITIVE: f64 = 7.0 / 6.0;
 const WOW_DRIFT_TARGETS_PER_CYCLE: f64 = 0.5;
 const FLUTTER_DRIFT_TARGETS_PER_CYCLE: f64 = 0.1;
@@ -24,9 +24,11 @@ pub struct ModulationParams {
     pub flutter_shape: f64,
     /// Independent, rate-derived random variation of both oscillators, 0..1.
     pub drift_amount: f64,
-    /// Symmetric L/R modulation phase displacement, 0..1 = 0..180 degrees.
+    /// Stereo spread: symmetric L/R modulation phase displacement,
+    /// 0..1 = 0..180 degrees.
     pub stereo_amount: f64,
-    /// Common circular phase offset, in turns. Smoothed within the engine.
+    /// Common circular phase offset, in turns. Changes glide with a 20 ms time
+    /// constant.
     pub phase_offset_turns: f64,
 }
 
@@ -101,9 +103,11 @@ impl ModulationEngine {
         self.phase_correction = [0.0; 2];
     }
 
-    /// Anchor only the selected oscillators to musical positions in turns. Preserve the
-    /// current rendered phase while settling onto the new clock with a 20 ms time constant.
-    /// A fresh/reset delay line can start directly at the reference phase.
+    /// Anchor oscillators to musical positions. `phases` holds [wow, flutter]
+    /// targets in turns; `None` or a non-finite value leaves that oscillator
+    /// running. Anchoring restarts that oscillator's Drift sequence. The rendered
+    /// phase glides onto the new clock with a 20 ms time constant, or jumps when
+    /// `immediate` is set.
     pub fn anchor_phases(&mut self, phases: [Option<f64>; 2], immediate: bool) {
         for (i, (phase, drift)) in [
             (&mut self.wow_phase, &mut self.wow_drift),

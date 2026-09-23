@@ -1,6 +1,6 @@
 # Installation and building
 
-Inton builds as CLAP and VST3 plug-ins on Linux, macOS, and Windows. The repository uses the same `nice-plug-xtask` bundling workflow as Oiko Wow and Oiko Weft.
+Inton builds as CLAP and VST3 plugins on Linux, macOS and Windows. It uses the same `nice-plug-xtask` bundling workflow as Oiko Wow and Oiko Weft.
 
 ## Build
 
@@ -11,11 +11,11 @@ cargo test --workspace --locked
 cargo xtask bundle inton --release
 ```
 
-The native artifacts are created at `target/bundled/Oiko Inton.clap` and `target/bundled/Oiko Inton.vst3`. On macOS these are correctly structured and ad-hoc-signed bundles; the bundler emits the corresponding native artifacts on Linux and Windows.
+The bundler writes `target/bundled/Oiko Inton.clap` and `target/bundled/Oiko Inton.vst3`. On macOS these are ad-hoc-signed bundles with the standard macOS bundle structure. On Linux and Windows the bundler writes the native CLAP and VST3 files for that platform.
 
-Linux also needs X11/OpenGL development libraries. On Debian-family systems, install `libx11-dev libxcursor-dev libx11-xcb-dev libxcb-dri2-0-dev libxcb-icccm4-dev libgl1-mesa-dev libglu1-mesa-dev`. The editor works on a Wayland desktop through an XWayland-hosted DAW.
+Linux also needs X11/OpenGL development libraries. On Debian-family systems, install `libx11-dev libxcursor-dev libx11-xcb-dev libxcb-dri2-0-dev libxcb-icccm4-dev libgl1-mesa-dev libglu1-mesa-dev`. On a Wayland desktop, the editor works when the DAW runs under XWayland.
 
-For a universal macOS bundle containing both Apple Silicon and Intel code:
+To build a universal macOS bundle with both Apple Silicon and Intel code, run:
 
 ```sh
 python3 scripts/release.py build inton --platform macOS
@@ -23,7 +23,7 @@ python3 scripts/release.py build inton --platform macOS
 
 The script installs both Rust targets, builds both architectures, combines them with `lipo`, verifies the result, and writes the bundle under `target/bundled`.
 
-On Windows, use PowerShell or the platform-neutral Cargo command:
+On Windows, run the same Cargo command in PowerShell:
 
 ```powershell
 cargo xtask bundle inton --release
@@ -31,15 +31,15 @@ cargo xtask bundle inton --release
 
 ## Install or update Inton
 
-The release ZIPs include CLAP and VST3 bundles, installation notes, licenses and the official ODDsound MTS runtime. Extract the whole ZIP and follow `README.txt`. The MTS helper keeps any existing runtime installation. Windows builds still need manual DAW testing.
+Each release ZIP contains the CLAP and VST3 bundles, installation notes, licenses and the official ODDSound MTS runtime. Extract the whole ZIP and follow `README.txt`. The MTS helper leaves an existing runtime installation in place. Windows builds still need manual testing in a DAW.
 
-To create a ZIP after building (Python 3.11 or later):
+To create a ZIP after building, run this with Python 3.11 or later:
 
 ```sh
 python3 scripts/release.py package inton --platform Linux --output dist/inton-linux-x86_64.zip
 ```
 
-Use `macOS` or `Windows` for the other platforms. GitHub Actions packages each platform automatically; a manual workflow run does not publish a release.
+Use `macOS` or `Windows` for the other platforms. GitHub Actions packages each platform automatically. A manual workflow run does not publish a release.
 
 ## Install the plugin bundles
 
@@ -71,13 +71,13 @@ Copy-Item "target\bundled\Oiko Inton.clap" $clapDir -Recurse -Force
 Copy-Item "target\bundled\Oiko Inton.vst3" $vst3Dir -Recurse -Force
 ```
 
-Keep each bundle intact. If you use custom plugin folders, copy there instead and include them in your DAW's scan paths. Restart your DAW and rescan plugins if needed.
+Copy each bundle as a whole folder. If you use custom plugin folders, copy the bundles there and add those folders to your DAW's scan paths. Restart your DAW, and rescan plugins if Inton does not appear.
 
 ## Install the MTS shared library
 
-For a first MTS-ESP installation, close audio hosts and run `bash plugins/inton/scripts/install-mts.sh` on Linux/macOS or `powershell -File plugins/inton/scripts/install-mts.ps1` on Windows, from the workspace root. In an extracted release archive, the helpers are under `scripts/`. These use the official ODDsound installers/libraries bundled with Inton and preserve an existing installation.
+For a first MTS-ESP installation, close all audio hosts. From the workspace root, run `bash plugins/inton/scripts/install-mts.sh` on Linux or macOS, or `powershell -File plugins/inton/scripts/install-mts.ps1` on Windows. In an extracted release archive, the helpers are under `scripts/`. The helpers use the official ODDSound installers and libraries bundled with Inton, and they leave an existing installation in place.
 
-Inton loads the official platform locations:
+Inton loads the library from the official location for each platform:
 
 - Linux: `/usr/local/lib/libMTS.so`
 - macOS: `/Library/Application Support/MTS-ESP/libMTS.dylib`
@@ -87,7 +87,7 @@ Inton loads the official platform locations:
 
 ## Scale files and preferences
 
-Inton stores its scales and preferences below the normal per-user data directory: `~/.local/share` and `~/.config` on Linux, `~/Library/Application Support` on macOS, and `%LOCALAPPDATA%` on Windows. Scales used by a project are embedded in the plug-in state, including their keyboard mappings.
+Inton stores its scales and preferences in the standard per-user data directories. These are `~/.local/share` and `~/.config` on Linux, `~/Library/Application Support` on macOS, and `%LOCALAPPDATA%` on Windows. The plugin state embeds every scale a project uses, including its keyboard mapping.
 
 ## Developer references
 

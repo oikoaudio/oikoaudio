@@ -100,7 +100,8 @@ impl<const SAMPLE_ACCURATE: bool> ClapPlugin for TimingProbe<SAMPLE_ACCURATE> {
 }
 nice_export_clap!(TimingProbe<true>, TimingProbe<false>);
 
-// The event payloads and list are owned by the caller for the entire process call.
+// Owned event storage: the `clap_input_events` callbacks return pointers into it, so it must
+// outlive the process call.
 #[allow(dead_code)]
 enum Event {
     Expression(clap_event_note_expression),
@@ -396,8 +397,8 @@ fn clap_wildcard_note_off_and_choke_round_trip_and_native_zero_velocity_survives
     })
     .collect();
     let (_, events) = host.process(64, events);
-    // Choke output is not represented by the current wrapper; input behavior is
-    // covered in Weft. Note-off and note-on must preserve their native addresses.
+    // The wrapper has no choke output event. Note-on and note-off must keep their native
+    // addresses.
     assert!(
         matches!(&events[0], Event::Note(e) if e.header.type_ == CLAP_EVENT_NOTE_ON && e.velocity == 0.0)
     );

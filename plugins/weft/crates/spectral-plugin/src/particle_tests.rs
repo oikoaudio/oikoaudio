@@ -504,7 +504,7 @@ fn legacy_shape_indices_recall_and_beta_automation_change_is_explicit() {
             index as f32 / 7.0
         );
     }
-    // Previously 1.0 selected Splash (state integer 6). It now selects Cloud.
+    // Normalized 1.0 selects Cloud; persisted integer 6 still selects Sprinkle.
     assert_eq!(
         p.motion_shape.preview_plain(1.0),
         SpectralMotionShape::Cloud
@@ -755,9 +755,10 @@ fn original_shape_values_keep_integer_identity_and_record_vst3_remapping() {
     use SpectralMotionShape::*;
     use nice_plug::params::enums::Enum;
     let p = SpectralParams::default();
-    // Original state and CLAP values were integer indices 0..=6. VST3 used
-    // index/6; adding Cloud changes that normalization to index/7. These are
-    // encoding expectations, not fixtures captured from a native host.
+    // Persisted and CLAP values are integer indices and keep their meaning.
+    // VST3 normalizes by the step count, so values saved as index/6 map to the
+    // listed shapes. These are encoding expectations, not fixtures captured
+    // from a native host.
     let cases = [
         (Ripple, 0, 0.0, Ripple),
         (Harmonic, 1, 1.0 / 6.0, Harmonic),
@@ -765,7 +766,7 @@ fn original_shape_values_keep_integer_identity_and_record_vst3_remapping() {
         (Scan, 3, 0.5, Notch),
         (Notch, 4, 4.0 / 6.0, Saw),
         (Saw, 5, 5.0 / 6.0, Sprinkle),
-        (Sprinkle, 6, 1.0, Cloud), // Original Splash selection intentionally becomes Sprinkle.
+        (Sprinkle, 6, 1.0, Cloud), // Stored index 6 stays Sprinkle; VST3 value 1.0 is Cloud.
     ];
     for (expected, old_index, old_vst_value, remapped) in cases {
         assert_eq!(SpectralMotionShape::from_index(old_index), expected);

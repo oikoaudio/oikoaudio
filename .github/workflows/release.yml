@@ -96,3 +96,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python scripts/workspace_release.py publish
+
+  website:
+    name: Update website downloads
+    needs: release
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Start the website deployment
+        env:
+          GH_TOKEN: ${{ secrets.WEBSITE_UPDATE_TOKEN }}
+        run: |
+          # The token needs Actions write access to oikoaudio/web. Without it,
+          # run the website's deploy workflow manually after reviewing the release.
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice::WEBSITE_UPDATE_TOKEN is not set; start the website deployment manually."
+            exit 0
+          fi
+          gh api --method POST repos/oikoaudio/web/actions/workflows/deploy-pages.yml/dispatches -f ref=main

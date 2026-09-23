@@ -518,7 +518,7 @@ pub(super) fn draw_note_skirts(
 
     // At zero depth, reveal held-note portions in blue even though the
     // uncompensated visual shape meets the unchanged orange ceiling. As depth
-    // rises, the complete compound line above takes over smoothly.
+    // rises, the full blue outline takes over smoothly.
     let note_alpha = (220.0 * (1.0 - depth_fade)) as u8;
     if note_alpha > 0 {
         let mut segment = Vec::new();

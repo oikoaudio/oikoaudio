@@ -1,7 +1,7 @@
 //! Host-independent fractional-delay primitives for clean wow/flutter.
 //!
 //! Reference primitives use `f64` so algorithmic error can be distinguished
-//! from the `f32` rounding error of the plug-in audio path.
+//! from the `f32` rounding error of the plugin audio path.
 
 use std::f64::consts::PI;
 use std::sync::Arc;
@@ -17,8 +17,8 @@ pub trait SampleSource {
     fn at(&self, index: i64) -> f64;
 }
 
-/// `f32` audio-path counterpart used by plugin hosts. Read positions remain
-/// `f64` so long-running modulation does not lose sub-sample phase precision.
+/// `f32` counterpart of `Kernel`. Read positions remain `f64` so long-running
+/// modulation does not lose sub-sample phase precision.
 pub trait KernelF32 {
     fn sample_f32<S: SampleSourceF32>(&self, source: &S, position: f64) -> f32;
 }
@@ -87,9 +87,8 @@ impl<const TAPS: usize> Kernel for Lagrange<TAPS> {
 
 /// Eight-point, seventh-degree Lagrange interpolation in fixed Farrow form.
 ///
-/// This evaluates the same polynomial as `Lagrange<8>`, but all basis
-/// coefficients are compile-time constants and the per-sample divisions and
-/// nested basis-product loop are eliminated.
+/// Evaluates the same polynomial as `Lagrange<8>` with precomputed basis
+/// coefficients; prefer it where per-sample cost matters.
 #[derive(Clone, Copy, Default)]
 pub struct Farrow8;
 
@@ -369,9 +368,8 @@ impl<K: Kernel, const FACTOR: usize> OversampledVariableDelay<K, FACTOR> {
 
 /// Four-times oversampling built as two sparse 2× halfband stages.
 ///
-/// This is the production-oriented comparison to the direct 4× prototype. An
-/// ideal halfband filter has alternating zero coefficients, so the sparse FIR
-/// representation avoids nearly half of its multiplies.
+/// An ideal halfband filter has alternating zero coefficients, so the sparse
+/// FIR representation avoids nearly half of its multiplies.
 pub struct CascadedOversampledVariableDelay4x<K> {
     up1: PolyphaseUpsampler<2>,
     up2: PolyphaseUpsampler<2>,
@@ -630,7 +628,8 @@ impl KernelF32 for WindowedSincF32 {
     }
 }
 
-/// Runtime quality choices shared by the DSP core and plugin wrapper.
+/// Interpolation quality. `Draft` is cubic; the other modes use windowed-sinc
+/// tables of increasing length.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum QualityMode {
     Draft,
@@ -654,9 +653,9 @@ struct RateSincSetF32 {
 }
 
 impl SincBankF32 {
-    /// `max_rate` is the greatest instantaneous playback speed the modulation
-    /// layer can request. The tables reserve the unsafe input band once during
-    /// activation rather than redesigning filters on the audio thread.
+    /// Builds anti-aliasing tables for playback rates from 1 up to `max_rate`;
+    /// faster requested rates use the `max_rate` tables. Allocates, so call it
+    /// outside the audio callback.
     pub fn for_max_rate(max_rate: f64) -> Self {
         assert!(max_rate.is_finite() && max_rate >= 1.0);
         const RATE_STEP: f64 = 0.02;
@@ -765,6 +764,8 @@ pub struct VariableDelayF32<K> {
 }
 
 impl<K: KernelF32> VariableDelayF32<K> {
+    /// Allocates history for delays up to `max_delay_samples`, plus
+    /// `kernel_margin` samples for the kernel's reach beyond the read position.
     pub fn new(max_delay_samples: usize, kernel_margin: usize, kernel: K) -> Self {
         let requested = max_delay_samples + 2 * kernel_margin + 8;
         let capacity = requested.next_power_of_two();
@@ -775,6 +776,9 @@ impl<K: KernelF32> VariableDelayF32<K> {
         }
     }
 
+    /// Writes one input and reads `delay_samples` behind it. Non-finite input,
+    /// or a non-finite or negative delay, returns 0 without writing the input
+    /// or advancing the history.
     #[inline]
     pub fn process_sample(&mut self, input: f32, delay_samples: f64) -> f32 {
         if !input.is_finite() || !delay_samples.is_finite() || delay_samples < 0.0 {
@@ -814,6 +818,9 @@ pub struct QualityVariableDelayF32 {
 }
 
 impl QualityVariableDelayF32 {
+    /// Allocates history for delays up to `max_delay_samples`, plus
+    /// `kernel_margin` samples for the kernel's reach beyond the read position.
+    /// A quality change crossfades over `crossfade_samples`; 0 switches at once.
     pub fn new(
         max_delay_samples: usize,
         kernel_margin: usize,
@@ -833,6 +840,8 @@ impl QualityVariableDelayF32 {
         }
     }
 
+    /// `process_sample_rate_aware` at the bank's maximum playback rate, the
+    /// most conservative anti-aliasing choice.
     #[inline]
     pub fn process_sample(
         &mut self,
@@ -848,6 +857,12 @@ impl QualityVariableDelayF32 {
         )
     }
 
+    /// Writes one input and reads `delay_samples` behind it with
+    /// `requested_quality`, crossfading from the previous quality when it
+    /// changes. `playback_rate` is the read head's current speed; it selects
+    /// the anti-aliasing tables and is clamped to 1 through the bank's maximum
+    /// rate. Non-finite input, or a non-finite or negative delay, returns 0
+    /// without writing the input, advancing the history, or changing quality.
     #[inline]
     pub fn process_sample_rate_aware(
         &mut self,
@@ -917,6 +932,8 @@ impl SampleSourceF32 for RingViewF32<'_> {
 }
 
 impl<K: Kernel> VariableDelay<K> {
+    /// Allocates history for delays up to `max_delay_samples`, plus
+    /// `kernel_margin` samples for the kernel's reach beyond the read position.
     pub fn new(max_delay_samples: usize, kernel_margin: usize, kernel: K) -> Self {
         let requested = max_delay_samples + 2 * kernel_margin + 8;
         let capacity = requested.next_power_of_two();

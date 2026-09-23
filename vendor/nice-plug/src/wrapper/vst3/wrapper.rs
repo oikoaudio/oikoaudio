@@ -1286,7 +1286,8 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                                     velocity: event.velocity,
                                 }),
                             );
-                            // VST3 note-on tuning uses cents; common tuning uses semitones.
+                            // `NoteOnEvent::tuning` is in cents; `NoteEvent::PolyTuning` is in
+                            // semitones.
                             if event.tuning.is_finite() && event.tuning != 0.0 {
                                 push_process_event(
                                     &mut process_events,
@@ -1747,6 +1748,8 @@ impl<P: Vst3Plugin> INoteExpressionControllerTrait for Wrapper<P> {
         // This should not be needed since they're predefined, but then again you'd think you also
         // wouldn't need to define predefined note expressions now do you?
         info.valueDesc = NoteExpressionValueDescription {
+            // Rest values: 0.25 is unity volume after the 4x gain scaling, 0 is no vibrato, and
+            // full expression matches the MIDI expression controller's reset value.
             defaultValue: match note_expression_info.type_id {
                 note_expressions::VOLUME_EXPRESSION_ID => 0.25,
                 note_expressions::VIBRATO_EXPRESSION_ID => 0.0,

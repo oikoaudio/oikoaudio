@@ -206,11 +206,8 @@ impl InternalParamMut for FloatParam {
             (self.preview_plain(normalized_value), normalized_value)
         };
 
-        // REAPER spams automation events with the same value. This prevents callbacks from firing
-        // multiple times. This can be problematic when they're used to trigger expensive
-        // computations when a parameter changes.
-        // The base value must change even when modulation or quantization keeps
-        // the effective value unchanged. Only the effective-value callback is deduplicated.
+        // Store the unmodulated value even when modulation or quantization leaves the modulated
+        // value unchanged. Only the `value_changed` callback is deduplicated.
         self.normalized_value
             .store(normalized_value, Ordering::Relaxed);
         let base_changed = self
@@ -219,6 +216,9 @@ impl InternalParamMut for FloatParam {
             != unmodulated_value;
         self.unmodulated_normalized_value
             .store(unmodulated_normalized_value, Ordering::Relaxed);
+        // REAPER spams automation events with the same value. This prevents callbacks from firing
+        // multiple times. This can be problematic when they're used to trigger expensive
+        // computations when a parameter changes.
         let old_value = self.value.swap(value, Ordering::Relaxed);
         if value != old_value {
             if let Some(f) = &self.value_changed {

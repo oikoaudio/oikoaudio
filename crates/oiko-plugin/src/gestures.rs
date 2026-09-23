@@ -28,7 +28,8 @@ impl ParameterGestures {
         let map = params.param_map();
         for ptr in active {
             if map.iter().any(|(_, live, _)| *live == ptr) {
-                // This pointer belongs to the live params object borrowed above.
+                // SAFETY: `ptr` is in `params.param_map()`, so it points into the
+                // live parameter object.
                 unsafe { setter.raw_context.raw_end_set_parameter(ptr) };
             }
         }

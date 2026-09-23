@@ -214,9 +214,10 @@ pub trait Plugin: Default + Send + 'static {
     /// This is an advanced feature that the vast majority of plugins won't need to implement.
     fn filter_state(state: &mut PluginState) {}
 
-    /// Validate a migrated state before the wrapper changes parameters or persisted fields.
-    /// Return an error to reject the complete load without changing the live state.
-    /// This runs after `filter_state` for both host and plug-in initiated loads.
+    /// Check a state after [`filter_state()`][Self::filter_state()] and before any parameter or
+    /// persistent field changes. Returning an error rejects the whole load and leaves the current
+    /// state unchanged; the message is logged at trace level. Called for both host-initiated and
+    /// plugin-initiated state loads.
     fn validate_state(state: &PluginState) -> Result<(), String> {
         Ok(())
     }

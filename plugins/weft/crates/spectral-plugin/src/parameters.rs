@@ -56,7 +56,7 @@ pub(crate) enum SpectralMotionShape {
     Scan,
     Notch,
     Saw,
-    // Keep original state indices 0..=6; Splash was stored as integer 6.
+    // Variant order is the persisted state index; append new shapes only.
     Sprinkle,
     Cloud,
 }

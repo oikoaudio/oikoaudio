@@ -111,12 +111,6 @@ use crate::wrapper::util::{clamp_input_event_timing, hash_param_id, process_wrap
 /// more than this many parameters at a time will cause changes to get lost.
 const OUTPUT_EVENT_QUEUE_CAPACITY: usize = 2048;
 
-/// Protect against OOM issues when loading malformed state.
-///
-/// If your plugin needs more storgage space than this, please post an issue in the nice-plug
-/// repository.
-
-
 pub struct Wrapper<P: ClapPlugin> {
     /// A reference to this object, upgraded to an `Arc<Self>` for the GUI context.
     this: AtomicRefCell<Weak<Self>>,
@@ -1288,6 +1282,9 @@ impl<P: ClapPlugin> Wrapper<P> {
             (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_ON) => {
                 if P::MIDI_INPUT >= MidiConfig::Basic {
                     let event = unsafe { &*(event as *const clap_event_note) };
+                    // Reject addresses outside the single note port and MIDI ranges: the
+                    // conversion helpers would turn them into wildcards. A note-on needs a
+                    // concrete port, channel and key; the other note events accept -1 wildcards.
                     if event.port_index != 0 || !(0..16).contains(&event.channel) || !(0..128).contains(&event.key) { return; }
 
                     push_event(
@@ -3452,8 +3449,7 @@ impl<P: ClapPlugin> Wrapper<P> {
             return false;
         }
         let declared_length = u64::from_le_bytes(length_bytes);
-        // Vec byte capacities must fit in isize as well as usize. This is a platform
-        // representation limit, not a preset-size policy imposed on plugins.
+        // Vec byte capacities must fit in isize as well as usize.
         let length = match usize::try_from(declared_length) {
             Ok(length) if length <= isize::MAX as usize => length,
             _ => return false,

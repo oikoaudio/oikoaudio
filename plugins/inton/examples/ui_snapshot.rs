@@ -3,7 +3,8 @@ use egui::{Color32, TextureId};
 use std::{collections::HashMap, sync::Arc};
 fn main() {
     let args: Vec<_> = std::env::args().collect();
-    // Run with an isolated XDG_CONFIG_HOME when using scene flags.
+    // Scene flags are saved to the real preferences file; set XDG_CONFIG_HOME to a
+    // scratch directory to keep your own settings.
     let mut prefs = inton::library::Preferences::load_from(&inton::library::preferences_path())
         .unwrap_or_default();
     prefs.view.listening_ideas = args.iter().any(|a| a == "ideas" || a == "guide");

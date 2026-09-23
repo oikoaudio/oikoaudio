@@ -1,4 +1,5 @@
-//! Exercise sample offsets through the public CLAP entry point, without a DAW or product DSP.
+//! Exercise sample offsets through the public CLAP entry point, without a host application or
+//! plugin DSP.
 use clap_sys::{
     audio_buffer::clap_audio_buffer,
     events::*,
@@ -84,7 +85,8 @@ impl<const SAMPLE_ACCURATE: bool> ClapPlugin for TimingProbe<SAMPLE_ACCURATE> {
 }
 nice_export_clap!(TimingProbe<true>, TimingProbe<false>);
 
-// The event payloads and list are owned by the caller for the entire process call.
+// Owned event storage: the `clap_input_events` callbacks return pointers into it, so it must
+// outlive the process call.
 enum Event {
     Value(clap_event_param_value),
     Modulation(clap_event_param_mod),

@@ -1137,8 +1137,9 @@ impl Editor {
                 .id_salt("listening-guide-content")
                 .max_height(320.)
                 .show(ui, |ui| {
-                    // Guides use headings, paragraphs and standalone source links.
-                    // Render the same embedded text, so the two editions stay in sync.
+                    // Render the Markdown guides embedded from docs/, so the in-app and
+                    // repository copies cannot diverge. Only headings, paragraphs and
+                    // standalone source links are supported.
                     for block in (if self.overlay == Overlay::QuickGuide {
                         include_str!("../docs/quick-guide.md")
                     } else {
@@ -1261,8 +1262,8 @@ impl NiceEguiApp for Editor {
         ));
         #[cfg(target_os = "macos")]
         {
-            // Match Weft's AppKit path: the host window is sized in logical points,
-            // egui stays at 1x, and the user's interface scale transforms a fixed canvas.
+            // The host sizes the window in logical points. Keep egui at 1x and apply the
+            // interface scale as a layer transform over a fixed-size canvas.
             let scale = ViewPreferences::nearest_scale(self.preferences.view.scale) as f32;
             let content_layer =
                 egui::LayerId::new(egui::Order::Middle, egui::Id::new("inton-scaled-content"));

@@ -128,8 +128,8 @@ impl NoteExpressionController {
         if event.noteId < 0 || !event.value.is_finite() {
             return None;
         }
-        // The ID remains authoritative even after the bounded address cache wraps.
-        // Do not drop expression for a long-held voice just because other notes played.
+        // An ID no longer in `note_ids` is still forwarded, with a wildcard channel and key, so a
+        // long-held voice keeps its expressions after newer notes overwrite its entry.
         let (note_id, key, channel) = self
             .note_ids
             .iter()

@@ -23,7 +23,8 @@ class ReleaseTests(unittest.TestCase):
         self.addCleanup(mocked.stop)
 
     def notice_fixtures(self, product, directory):
-        (directory / "LICENSE").write_bytes(b"product license")
+        (directory / "LICENSE-MIT").write_bytes(b"mit license")
+        (directory / "LICENSE-APACHE").write_bytes(b"apache license")
         (directory / "licenses").mkdir()
         (directory / "licenses/upstream.txt").write_bytes(b"upstream notice")
         (directory / "dependency-licenses.json").write_text("[]\n")
@@ -74,7 +75,7 @@ class ReleaseTests(unittest.TestCase):
                         self.assertIsNone(archive.testzip())
                         self.assertEqual(archive.read(clap.name), b"clap binary")
                 self.assertEqual({Path(n).parts[0] for n in names},
-                                 {clap.name, vst3.name, "LICENSE", "licenses", "dependency-licenses.json"})
+                                 {clap.name, vst3.name, "LICENSE-MIT", "LICENSE-APACHE", "licenses", "dependency-licenses.json"})
                 if platform == "Linux":
                     with tarfile.open(output) as archive:
                         self.assertEqual(archive.extractfile("licenses/upstream.txt").read(), b"upstream notice")
@@ -143,7 +144,7 @@ class ReleaseTests(unittest.TestCase):
             self.assertEqual([call[:2] for call in calls[:2]], [("ditto", str(clap)), ("ditto", str(vst3))])
             self.assertEqual(calls[-1][:4], ("ditto", "-c", "-k", "--sequesterRsrc"))
             self.assertEqual({Path(call[1]).name for call in calls[2:-1]},
-                             {"LICENSE", "licenses", "dependency-licenses.json"})
+                             {"LICENSE-MIT", "LICENSE-APACHE", "licenses", "dependency-licenses.json"})
             self.assertEqual(output.read_bytes(), b"archive")
 
     def publication_fixture(self, directory):

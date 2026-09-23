@@ -25,7 +25,8 @@ fn factory(p: &Preset) -> Option<&'static FactoryEntry> {
             && f.kbm_text == p.kbm_text
     })
 }
-/// Factory prose belongs to the installed library; custom descriptions stay with the project.
+/// Text to show for `p`: the installed factory description for factory scales, otherwise
+/// the preset's own; empty when it only repeats the display name.
 pub fn description(p: &Preset) -> &str {
     let text = factory(p).map_or(p.description.as_str(), |f| f.preset.description.as_str());
     if text.trim() == p.display_name.trim() {
@@ -34,7 +35,7 @@ pub fn description(p: &Preset) -> &str {
         text
     }
 }
-/// All factory exercises use one optional field and assume the original scale and mapping.
+/// Listening exercise for an unmodified factory scale, or an empty string if it has none.
 pub fn hint(p: &Preset) -> &'static str {
     factory(p).map_or("", |f| f.listening_hint.as_str())
 }

@@ -4,21 +4,23 @@ use crate::MaskWorkspace;
 use oiko_dsp::db_to_gain;
 
 pub const MAX_PARTICLES: usize = 64;
-/// Sparse harmonic subsets: at most three windows per Sprinkle gesture.
+/// Sparse harmonic subsets: at most three windows per particle.
 pub const WINDOWS_PER_PARTICLE: usize = 3;
 pub const MAX_PARTIALS: usize = 24;
 pub const PARTIAL_COUNT_CUMULATIVE: [f32; 2] = [0.80, 0.97];
 pub const MAX_BIRTH_ATTEMPTS: usize = 64;
 pub const MAX_SOURCES: usize = 256;
 /// Separate keyed SplitMix64 streams: timing=0, source/register=1/2,
-/// lifetime=3, retired movement key=4 (unused), Sprinkle grouping=5, retired attack key=6, width=7, free timing=8, retired brightness=9, opening=10, free root=11, partial count=12, weighted draws=13/14/15. Rejected opportunities still consume their index.
+/// lifetime=3, Sprinkle grouping=5, width=7, free timing=8, opening=10,
+/// free root=11, partial count=12, weighted draws=13/14/15. Keys 4, 6 and 9
+/// are unused. Rejected opportunities still consume their index.
 pub const SEED: u64 = 0x7765_6674_7061_7274;
 pub const RETIRE_SECONDS: f64 = 0.02;
 pub const TRANSITION_SECONDS: f32 = 0.05;
 pub const LIFETIME_BASE: f32 = 0.2;
 pub const LIFETIME_SIZE: f32 = 0.3;
 pub const LIFETIME_VARIATION: f32 = 0.15;
-/// Original audition design: three independent streams share one Rate budget.
+/// Three independent streams share one Rate budget.
 /// Each stream has 0/1/2 starts (25/50/25%) per three Rate cycles: E[total]=Rate.
 pub const SPRINKLE_STREAMS: usize = 3;
 pub const SPRINKLE_GROUP_CYCLES: f64 = 3.0;
@@ -28,7 +30,8 @@ pub const SPRINKLE_DECAY_POWER: i32 = 3;
 pub const SPRINKLE_WIDTH_RANGE: [f32; 2] = [0.65, 1.25];
 /// Vary the window opening, never the selected background attenuation.
 pub const SPRINKLE_OPENING_RANGE: [f32; 2] = [0.85, 1.0];
-/// Random stream 11 keys phrase roots; free Sprinkle roots span three octaves; octave choices and partials share each root.
+/// Random stream 11 keys phrase roots; free Sprinkle roots span three octaves;
+/// octave choices and partials share each root.
 pub const FREE_ROOT_MIN_HZ: f32 = 200.0;
 pub const FREE_ROOT_RATIO: f32 = 8.0;
 pub const CLOUD_ATTACK: f32 = 0.5;
@@ -62,7 +65,11 @@ pub struct Config {
     pub direction: Direction,
     pub rate_hz: f32,
     pub size_octaves: f32,
+    /// Offset of the Rate cycle in cycles, wrapped to `0.0..1.0`. Changes glide
+    /// rather than jump.
     pub phase: f32,
+    /// When false, the Rate clock holds and scheduled births stop; note
+    /// triggers still produce particles.
     pub scheduled: bool,
     /// Quantize Sprinkle gestures to quarter subdivisions of the Rate cycle.
     pub sync: bool,
@@ -93,7 +100,7 @@ impl Default for Config {
     }
 }
 impl Config {
-    /// Capture duration in seconds and the attack fraction for one new event.
+    /// Capture duration in seconds and the attack fraction for one new particle.
     fn envelope(&self, index: u64, sample_rate: f32) -> (f32, f32) {
         let size = self.size_octaves;
         let rate = self.rate_hz;
@@ -485,8 +492,9 @@ impl Engine {
             }
         }
     }
-    /// Called before reuse/unmapping/choke. Detaching identity prevents a reused
-    /// host slot from retuning the retiring particle.
+    /// Clear `slot` and retire its active particles. Retiring particles are
+    /// detached, so a later source in the same slot cannot retune them. Call
+    /// before the slot is reassigned or when its note stops abruptly.
     pub fn retire_source(&mut self, slot: usize) {
         self.sources[slot] = Source::default();
         for p in &mut self.particles {
@@ -500,6 +508,7 @@ impl Engine {
     pub fn release_source(&mut self, slot: usize) {
         self.sources[slot].eligible = false;
     }
+    /// Birth a particle for `slot` with a freshly reserved variation index.
     pub fn trigger(&mut self, slot: usize) {
         let index = self.reserve_trigger();
         self.trigger_reserved(slot, index);
@@ -511,6 +520,8 @@ impl Engine {
         self.immediate_index = self.immediate_index.wrapping_add(1);
         index
     }
+    /// Birth a particle for `slot` using an index from `reserve_trigger`. Does
+    /// nothing unless Sprinkle is enabled and the slot holds an eligible source.
     pub fn trigger_reserved(&mut self, slot: usize, index: u64) {
         if slot < MAX_SOURCES
             && self.config.enabled
@@ -565,7 +576,8 @@ impl Engine {
     pub fn active_count(&self) -> usize {
         self.particles.iter().filter(|p| p.active).count()
     }
-    /// Sample recurrence makes timing and phase automation independent of slices.
+    /// Sample recurrence makes timing and phase automation independent of host
+    /// block boundaries.
     /// The loop is bounded by supplied audio samples; at most 64 births per hop.
     pub fn advance(&mut self, samples: usize) {
         let step = self.config.rate_hz as f64 / self.prepared.sample_rate;

@@ -13,24 +13,31 @@
          }
 --- a/src/wrapper/clap/wrapper.rs
 +++ b/src/wrapper/clap/wrapper.rs
-@@ -115,7 +115,7 @@
- ///
- /// If your plugin needs more storgage space than this, please post an issue in the nice-plug
- /// repository.
--const MAX_STATE_BYTES: u64 = 268_435_456;
-+
+@@ -111,12 +111,6 @@
+ /// more than this many parameters at a time will cause changes to get lost.
+ const OUTPUT_EVENT_QUEUE_CAPACITY: usize = 2048;
  
+-/// Protect against OOM issues when loading malformed state.
+-///
+-/// If your plugin needs more storgage space than this, please post an issue in the nice-plug
+-/// repository.
+-const MAX_STATE_BYTES: u64 = 268_435_456;
+-
  pub struct Wrapper<P: ClapPlugin> {
      /// A reference to this object, upgraded to an `Arc<Self>` for the GUI context.
-@@ -1288,6 +1288,7 @@
+     this: AtomicRefCell<Weak<Self>>,
+@@ -1288,6 +1282,10 @@
              (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_ON) => {
                  if P::MIDI_INPUT >= MidiConfig::Basic {
                      let event = unsafe { &*(event as *const clap_event_note) };
++                    // Reject addresses outside the single note port and MIDI ranges: the
++                    // conversion helpers would turn them into wildcards. A note-on needs a
++                    // concrete port, channel and key; the other note events accept -1 wildcards.
 +                    if event.port_index != 0 || !(0..16).contains(&event.channel) || !(0..128).contains(&event.key) { return; }
  
                      push_event(
                          input_events,
-@@ -1306,6 +1307,7 @@
+@@ -1306,6 +1304,7 @@
              (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_OFF) => {
                  if P::MIDI_INPUT >= MidiConfig::Basic {
                      let event = unsafe { &*(event as *const clap_event_note) };
@@ -38,7 +45,7 @@
  
                      push_event(
                          input_events,
-@@ -1322,6 +1324,7 @@
+@@ -1322,6 +1321,7 @@
              (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_CHOKE) => {
                  if P::MIDI_INPUT >= MidiConfig::Basic {
                      let event = unsafe { &*(event as *const clap_event_note) };
@@ -46,7 +53,7 @@
  
                      push_event(
                          input_events,
-@@ -1336,8 +1339,9 @@
+@@ -1336,8 +1336,9 @@
              }
              (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_EXPRESSION) => {
                  if P::MIDI_INPUT >= MidiConfig::Basic {
@@ -57,7 +64,7 @@
                      match event.expression_id {
                          CLAP_NOTE_EXPRESSION_PRESSURE => {
                              push_event(
-@@ -3120,8 +3124,10 @@
+@@ -3120,8 +3121,10 @@
                  let info = unsafe { &mut *info };
                  info.id = 0;
                  // NOTE: REAPER won't send us SysEx if we don't support the MIDI dialect
@@ -69,7 +76,7 @@
                  info.preferred_dialect = CLAP_NOTE_DIALECT_CLAP;
                  strlcpy(&mut info.name, "Note Input");
  
-@@ -3445,27 +3451,37 @@
+@@ -3445,27 +3448,36 @@
              );
              return false;
          }
@@ -81,8 +88,7 @@
 -        }
 -
 +        let declared_length = u64::from_le_bytes(length_bytes);
-+        // Vec byte capacities must fit in isize as well as usize. This is a platform
-+        // representation limit, not a preset-size policy imposed on plugins.
++        // Vec byte capacities must fit in isize as well as usize.
 +        let length = match usize::try_from(declared_length) {
 +            Ok(length) if length <= isize::MAX as usize => length,
 +            _ => return false,
@@ -129,13 +135,15 @@
          match unsafe { state::deserialize_json(&read_buffer) } {
 --- a/src/wrapper/clap.rs
 +++ b/src/wrapper/clap.rs
-@@ -34,6 +34,10 @@
+@@ -34,6 +34,12 @@
      /// Keywords describing the plugin. The host may use this to classify the plugin in its plugin
      /// browser.
      const CLAP_FEATURES: &'static [ClapFeature];
 +
-+    /// Advertise MIDI MPE input in addition to ordinary MIDI and native CLAP notes.
-+    /// The plugin must implement channel allocation, zone controls and bend ranges.
++    /// Whether the note input port also advertises the MIDI MPE dialect, alongside CLAP notes and
++    /// MIDI. This takes effect only when `Plugin::MIDI_INPUT` is at least `MidiConfig::MidiCCs`.
++    /// Enable it only if the plugin handles MPE itself: member-channel voice allocation, zone
++    /// configuration and per-channel pitch bend ranges.
 +    const CLAP_SUPPORTS_MPE: bool = false;
  
      /// If set, this informs the host about the plugin's capabilities for polyphonic modulation.
@@ -225,8 +233,8 @@
 +        if event.noteId < 0 || !event.value.is_finite() {
 +            return None;
 +        }
-+        // The ID remains authoritative even after the bounded address cache wraps.
-+        // Do not drop expression for a long-held voice just because other notes played.
++        // An ID no longer in `note_ids` is still forwarded, with a wildcard channel and key, so a
++        // long-held voice keeps its expressions after newer notes overwrite its entry.
 +        let (note_id, key, channel) = self
              .note_ids
              .iter()
@@ -319,11 +327,12 @@
              process_wrapper(|| plugin.reset());
          }
  
-@@ -1285,6 +1286,20 @@
+@@ -1285,6 +1286,21 @@
                                      velocity: event.velocity,
                                  }),
                              );
-+                            // VST3 note-on tuning uses cents; common tuning uses semitones.
++                            // `NoteOnEvent::tuning` is in cents; `NoteEvent::PolyTuning` is in
++                            // semitones.
 +                            if event.tuning.is_finite() && event.tuning != 0.0 {
 +                                push_process_event(
 +                                    &mut process_events,
@@ -340,11 +349,13 @@
                          } else if event.r#type == EventTypes_::kNoteOffEvent as u16 {
                              let event = unsafe { event.__field0.noteOff };
  
-@@ -1732,7 +1747,12 @@
+@@ -1732,7 +1748,14 @@
          // This should not be needed since they're predefined, but then again you'd think you also
          // wouldn't need to define predefined note expressions now do you?
          info.valueDesc = NoteExpressionValueDescription {
 -            defaultValue: 0.5,
++            // Rest values: 0.25 is unity volume after the 4x gain scaling, 0 is no vibrato, and
++            // full expression matches the MIDI expression controller's reset value.
 +            defaultValue: match note_expression_info.type_id {
 +                note_expressions::VOLUME_EXPRESSION_ID => 0.25,
 +                note_expressions::VIBRATO_EXPRESSION_ID => 0.0,
@@ -356,8 +367,9 @@
              stepCount: 0,
 --- /dev/null
 +++ b/tests/clap_event_timing.rs
-@@ -0,0 +1,420 @@
-+//! Exercise sample offsets through the public CLAP entry point, without a DAW or product DSP.
+@@ -0,0 +1,422 @@
++//! Exercise sample offsets through the public CLAP entry point, without a host application or
++//! plugin DSP.
 +use clap_sys::{
 +    audio_buffer::clap_audio_buffer,
 +    events::*,
@@ -443,7 +455,8 @@
 +}
 +nice_export_clap!(TimingProbe<true>, TimingProbe<false>);
 +
-+// The event payloads and list are owned by the caller for the entire process call.
++// Owned event storage: the `clap_input_events` callbacks return pointers into it, so it must
++// outlive the process call.
 +enum Event {
 +    Value(clap_event_param_value),
 +    Modulation(clap_event_param_mod),
@@ -779,9 +792,10 @@
 +}
 --- /dev/null
 +++ b/tests/clap_state_stream.rs
-@@ -0,0 +1,273 @@
+@@ -0,0 +1,274 @@
 +//! State loading through the public CLAP API, including allocation failure injection.
-+// This test supplies its own allocator; run without the realtime allocation guard.
++// `assert_process_allocs` installs the wrapper's own `#[global_allocator]`, which would conflict
++// with this test's allocator.
 +#![cfg(not(feature = "assert_process_allocs"))]
 +use clap_sys::{
 +    ext::{
@@ -1055,7 +1069,7 @@
 +}
 --- /dev/null
 +++ b/tests/note_expressions.rs
-@@ -0,0 +1,547 @@
+@@ -0,0 +1,548 @@
 +//! Native expression conversion through actual wrapper code and the CLAP entry point.
 +#[path = "../src/wrapper/vst3/note_expressions.rs"]
 +mod vst3_expressions;
@@ -1158,7 +1172,8 @@
 +}
 +nice_export_clap!(TimingProbe<true>, TimingProbe<false>);
 +
-+// The event payloads and list are owned by the caller for the entire process call.
++// Owned event storage: the `clap_input_events` callbacks return pointers into it, so it must
++// outlive the process call.
 +#[allow(dead_code)]
 +enum Event {
 +    Expression(clap_event_note_expression),
@@ -1454,8 +1469,8 @@
 +    })
 +    .collect();
 +    let (_, events) = host.process(64, events);
-+    // Choke output is not represented by the current wrapper; input behavior is
-+    // covered in Weft. Note-off and note-on must preserve their native addresses.
++    // The wrapper has no choke output event. Note-on and note-off must keep their native
++    // addresses.
 +    assert!(
 +        matches!(&events[0], Event::Note(e) if e.header.type_ == CLAP_EVENT_NOTE_ON && e.velocity == 0.0)
 +    );

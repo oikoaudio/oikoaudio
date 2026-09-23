@@ -1,5 +1,5 @@
 # Third-party notices
 
-Oiko Wow source is MIT licensed; see `LICENSE`. Releases include `dependency-licenses.json` and `licenses/` for the resolved Rust dependencies and fonts. The inventory includes normal and build dependencies across supported and conditional targets; some entries may not be linked into a particular platform build.
+Oiko Wow source is licensed under either the MIT License or the Apache License 2.0, at your option. See `LICENSE-MIT` and `LICENSE-APACHE`. Releases include `dependency-licenses.json` and `licenses/`, which cover the resolved Rust dependencies and fonts. The inventory lists normal and build dependencies for all supported and conditional targets, so a given platform build may not link every entry.
 
-NicePlug supplies the CLAP/VST3 wrappers, and egui with egui-baseview/baseview supplies the editor backend. The shared Ubuntu font retains its Ubuntu Font Licence. Individual upstream notices and supplemental-source provenance are included in `licenses/`.
+NicePlug provides the CLAP and VST3 wrappers. egui, egui-baseview and baseview provide the editor backend. The shared Ubuntu font keeps its Ubuntu Font Licence. `licenses/` contains each upstream notice and the provenance of supplemental sources.

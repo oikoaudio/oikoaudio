@@ -73,6 +73,7 @@ impl Draft {
         self.reset_mapping();
         Ok(())
     }
+    /// Cents of note `index` if the period were divided equally among the draft's notes.
     pub fn offset_baseline(&self, index: usize) -> f64 {
         self.degrees.last().copied().unwrap_or(0.) * (index + 1) as f64 / self.degrees.len() as f64
     }
@@ -104,6 +105,8 @@ impl Draft {
         self.degrees.remove(index);
         Ok(())
     }
+    /// Keep `count` intervals starting at index `start`, measured from the note before
+    /// `start`; the last kept interval becomes the period. Resets the keyboard mapping.
     pub fn extract_cycle(&mut self, start: usize, count: usize) -> Result<(), String> {
         let end = start.checked_add(count).ok_or("Invalid cycle range")?;
         if count == 0 || end > self.degrees.len() {
@@ -125,8 +128,8 @@ impl Draft {
     pub fn preset(&self) -> Result<Preset, String> {
         Ok(self.validated()?.preset().clone())
     }
-    /// Cache only this draft revision, including validation failures. Live edits
-    /// produce a new revision; preview, audition and Apply share its result.
+    /// Validate the current draft. Calls without an intervening edit return the same
+    /// result, including the same error.
     pub fn validated(&self) -> Result<ValidatedScale, String> {
         let state = self.state();
         let mut cache = self.prepared.borrow_mut();

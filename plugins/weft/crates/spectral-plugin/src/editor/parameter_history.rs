@@ -158,7 +158,6 @@ pub(super) fn restore_parameters(
     let map = params.param_map();
     for change in changes {
         if let Some((_, ptr, _)) = map.iter().find(|(id, _, _)| *id == change.id) {
-            // Restore only the affected parameter through the normal host path.
             // Do not skip based on its current value: a previous queued edit
             // may still be in flight. All pointers belong to borrowed params.
             unsafe {

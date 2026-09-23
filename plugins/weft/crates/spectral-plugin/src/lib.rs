@@ -412,7 +412,8 @@ impl Plugin for SpectralPlugin {
         let mut next_event = context.next_event();
         let mut offset = 0;
         loop {
-            // Apply all same-sample events before generating any samples at that position.
+            // Expressions may precede note-on at the same offset, so apply every
+            // event there before generating samples from that offset.
             while next_event.is_some_and(|event| event.timing() as usize <= offset) {
                 let event = next_event.take().unwrap();
                 if expression_address(event).is_some() {

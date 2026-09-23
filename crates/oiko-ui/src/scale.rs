@@ -1,4 +1,5 @@
-//! User zoom is distinct from monitor DPI. All dimensions here are logical points.
+//! Interface scale is distinct from monitor DPI and from egui's zoom factor.
+//! All dimensions here are logical points.
 pub const SCALE_STEPS: [f64; 7] = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 pub const UI_SCALE_STEPS: [f32; 7] = [
     SCALE_STEPS[0] as f32,
@@ -10,7 +11,8 @@ pub const UI_SCALE_STEPS: [f32; 7] = [
     SCALE_STEPS[6] as f32,
 ];
 
-/// Clamp and snap persisted zoom. Invalid state returns the safe 100% default.
+/// Snap a persisted interface scale to the nearest supported step. Non-finite
+/// values return the safe 100% default.
 pub fn nearest_scale(scale: f64) -> f64 {
     if !scale.is_finite() {
         return 1.0;
@@ -25,7 +27,8 @@ pub fn closest_ui_scale(scale: f32) -> f32 {
     nearest_scale(scale as f64) as f32
 }
 
-/// Canvas transform needed in addition to egui zoom on the current platform.
+/// Canvas transform needed in addition to egui's zoom factor on the current
+/// platform.
 pub fn canvas_scale(scale: f32) -> f32 {
     if cfg!(target_os = "macos") {
         closest_ui_scale(scale)
@@ -34,8 +37,9 @@ pub fn canvas_scale(scale: f32) -> f32 {
     }
 }
 
-/// Apply restored zoom whenever a window opens, using the same deferred resize
-/// path as the zoom menu. Hosts can construct editors before restoring state.
+/// Apply the restored interface scale whenever an editor window opens. Hosts
+/// can construct editors before restoring state, so the scale known at
+/// construction may be stale.
 pub fn initialize_scale(context: &egui::Context, scale: f32, logical_size: egui::Vec2) {
     request_scale(context, scale, logical_size);
 }

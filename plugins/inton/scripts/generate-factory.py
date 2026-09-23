@@ -31,7 +31,7 @@ notes=sorted([(i*fifth)%1200 for i in range(-5,7) if i!=0])+[1200]
 add('quarter-comma','Quarter-comma meantone','Historical / Temperaments','Pure major thirds; the chain includes an uneven closing fifth.',[f'{v:.12f}' for v in notes],['historical','meantone','major thirds'])
 for id,p in [('golden', (1+math.sqrt(5))/2),('five-four',1.25)]:
  add('seven-'+id,'7 steps · '+('golden ratio' if id=='golden' else '5:4 period'),'Experimental','',[f'{1200*math.log2(p)*i/7:.12f}' for i in range(1,8)],['experimental','arbitrary period'])
-# Original fixed pitch-class offsets, in cents from 12 EDO, ordered C through B.
+# Project-authored fixed pitch-class offsets, in cents from 12 EDO, ordered C through B.
 # Keeping C and A at zero preserves both the octave root and Inton's A440 anchor.
 detunings=json.loads((Path(__file__).parent/'electronic-detunings.json').read_text())
 for tuning in detunings:

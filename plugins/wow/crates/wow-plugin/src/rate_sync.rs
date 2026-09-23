@@ -30,7 +30,7 @@ impl RateRange {
     }
 }
 
-/// Ignore missing/non-finite host tempo. Retain the last valid tempo, initially 120 BPM.
+/// Returns `tempo` when it is finite and within 1–960 BPM, otherwise `previous`.
 /// The accepted domain guarantees both LFOs have in-range musical divisions.
 pub(crate) fn host_tempo(tempo: Option<f64>, previous: f64) -> f64 {
     tempo

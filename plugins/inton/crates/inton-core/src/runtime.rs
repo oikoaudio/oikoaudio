@@ -13,10 +13,9 @@ use std::{
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
-/// Parameter exchange with independent, bounded host updates.
-/// Host callbacks store the latest value without acquiring the batch writer.
-/// Control-thread edits consume those updates before transforming the batch;
-/// callbacks arriving during a transformation remain pending for the next read.
+/// Lock-free exchange of the automatable parameters between host callbacks and the
+/// control thread. `set_host_value` never blocks. A control-thread write replaces every
+/// value and discards pending host values; reads return `None` while a write is in progress.
 pub struct ParameterMailbox {
     generation: AtomicU64,
     values: [AtomicU64; Parameter::COUNT],
@@ -59,7 +58,8 @@ impl ParameterMailbox {
         self.generation.store(before.wrapping_add(2), SeqCst);
         true
     }
-    /// State restore and other control-thread writers may wait for a batch edit.
+    /// Replace all values and discard pending host values. Spins until any concurrent
+    /// control-thread write finishes, so never call this from the audio thread.
     pub fn write(&self, p: Parameters) {
         while !self.try_write(p) {
             std::thread::yield_now();
@@ -79,7 +79,8 @@ impl ParameterMailbox {
         }
         Some((Parameters::from_values(v), before))
     }
-    /// Control-thread transformation. Host callbacks never acquire this writer.
+    /// Apply `update` to the current values after folding in pending host values.
+    /// Spins while another control-thread write is in progress; host callbacks never wait.
     fn modify(&self, update: impl FnOnce(Parameters) -> Parameters) -> Parameters {
         let generation = loop {
             let before = self.generation.load(SeqCst);
@@ -108,7 +109,9 @@ impl ParameterMailbox {
         self.generation.store(generation.wrapping_add(2), SeqCst);
         updated
     }
-    /// Host/flush callback entry point. No locks, retries, allocation, or wakeup.
+    /// Record the latest host value; realtime-safe (no locks, retries, allocation or wakeup).
+    /// Non-finite values are ignored. The value takes precedence over the stored one until
+    /// the next control-thread write consumes or discards it.
     pub fn set_host_value(&self, id: Parameter, value: f64) {
         if value.is_finite() {
             self.host_updates[id.index()].store(value.to_bits(), SeqCst);
@@ -178,17 +181,22 @@ struct EditHistory {
     redo: Vec<(String, ValidatedProject, usize)>,
 }
 
+/// Project, tuning engine and MTS state shared by the plugin, its editor and the MTS thread.
 pub struct Shared {
     history: Mutex<EditHistory>,
     pub audition_enabled: AtomicBool,
+    /// Set when a blocked MTS master registration can be reset with `recovery_requested`.
     pub recovery_available: AtomicBool,
+    /// Set to make the MTS thread reinitialize libMTS on its next update; cleared once handled.
     pub recovery_requested: AtomicBool,
     audition: Mutex<Option<ValidatedScale>>,
     pub parameters: ParameterMailbox,
     pub project: Mutex<Session>,
+    /// Latest MTS master status and connected client count.
     pub status: Mutex<(MasterStatus, usize)>,
     pub error: Mutex<Option<String>>,
     pending: PendingParameterEdits,
+    /// Set to stop the thread started by `start`.
     pub stop: AtomicBool,
 }
 impl Default for Shared {
@@ -230,7 +238,9 @@ impl Shared {
         self.audition_enabled.store(false, SeqCst);
         *self.audition.lock().unwrap() = None;
     }
-    /// Control-thread output: temporary audition never writes project slots or automation.
+    /// Advance the morph by `dt` seconds and return what to publish: (frequencies in Hz per
+    /// MIDI note, scale name, period ratio, enabled). While audition is active this returns
+    /// the auditioned scale without changing project slots or automation.
     pub fn publication(&self, dt: f64) -> ([f64; 128], String, f64, bool) {
         let mut s = self.project.lock().unwrap();
         let Session { project, engine } = &mut *s;
@@ -258,13 +268,17 @@ impl Shared {
             engine.parameters.enabled,
         )
     }
+    /// Queue a parameter change made by the editor or control code for the host.
+    /// Unlike `set_parameter_value`, it does not change the value directly.
     pub fn edit_parameter(&self, id: Parameter, value: f64) {
         self.pending.set(id, value);
     }
-    /// Drain coalesced UI/control edits on the editor thread and forward them as host gestures.
+    /// Drain edits queued with `edit_parameter` since the last call, one latest value per
+    /// parameter. The caller forwards them to the host.
     pub fn take_parameter_edits(&self) -> impl Iterator<Item = (Parameter, f64)> + '_ {
         self.pending.take()
     }
+    /// Apply a parameter value received from the host. Realtime-safe.
     pub fn set_parameter_value(&self, id: Parameter, value: f64) {
         self.parameters.set_host_value(id, value);
     }
@@ -297,7 +311,8 @@ impl Shared {
         );
         Ok(())
     }
-    /// Allocate only when the validated asynchronous import is ready to commit.
+    /// Put the scale in the first slot not yet added to the scale set, as one undo step.
+    /// Returns the slot index; fails when the scale is invalid or all slots are in use.
     pub fn append(&self, preset: Preset) -> Result<usize, String> {
         self.append_prepared(ValidatedScale::new(preset)?)
     }
@@ -319,7 +334,7 @@ impl Shared {
         engine.update(parameters, project, index == parameters.position);
         Ok(index)
     }
-    /// Reorder contents, preserving the sounding table and morph trajectory.
+    /// Reorder contents, preserving the current tuning table and morph trajectory.
     /// Future host automation continues to address the fixed numerical positions.
     pub fn move_slot(&self, from: usize, to: usize) -> Result<(), String> {
         let before = self.prepared_snapshot();
@@ -426,7 +441,8 @@ impl Shared {
                 .collect(),
         }
     }
-    /// State restore is a non-realtime writer; a replacement supersedes previously received host updates.
+    /// Replace the whole project. Discards pending host values and parameter edits, stops
+    /// audition and clears undo history. Not realtime-safe.
     pub fn restore(&self, project: Project) -> Result<(), String> {
         self.restore_prepared(ValidatedProject::new(project)?)
     }
@@ -462,6 +478,7 @@ impl Shared {
             .undo
             .push((label.into(), before, after.parameters.position));
     }
+    /// Labels of the next undo and redo steps, in that order.
     pub fn history_labels(&self) -> (Option<String>, Option<String>) {
         let history = self.history.lock().unwrap();
         (
@@ -469,6 +486,9 @@ impl Shared {
             history.redo.last().map(|e| e.0.clone()),
         )
     }
+    /// Undo the latest edit, or redo the latest undone edit when `redo` is true; does
+    /// nothing when there is none. Current parameter values are kept, except that the
+    /// selected slot is restored if it has not changed since the edit.
     pub fn undo_edit(&self, redo: bool) -> Result<(), String> {
         let current = self.prepared_snapshot();
         let mut history = self.history.lock().unwrap();
@@ -499,7 +519,8 @@ impl Shared {
         self.edit_parameter(Parameter::Position, position as f64);
         Ok(())
     }
-    /// A validated batch is one edit: no partial additions on capacity/parse failure.
+    /// Add scales to the first free slots as one undo step and return their indices.
+    /// When any scale is invalid or there is not enough space, nothing is added.
     pub fn append_scales(&self, presets: Vec<Preset>) -> Result<Vec<usize>, String> {
         let before = self.prepared_snapshot();
         let mut after = before.clone();
@@ -521,6 +542,8 @@ impl Shared {
     }
     pub fn clear_scale_set(&self) -> Result<(), String> {
         let before = self.prepared_snapshot();
+        // If the active tuning is in no slot, slot 0 stays empty and the held table keeps
+        // it sounding.
         let scale = before.scales[before.project.parameters.position]
             .clone()
             .or_else(|| {
@@ -540,12 +563,13 @@ impl Shared {
         cleared.project.scale_set = false;
         cleared.project.set_collapsed = false;
         cleared.project.parameters.position = 0;
-        // Retain the held table when the active tuning is no longer in the set.
         self.restore_prepared_inner(cleared)?;
         self.edit_parameter(Parameter::Position, 0.);
         self.record_edit("Clear scale set", before);
         Ok(())
     }
+    /// Start the MTS thread. It loads libMTS, then about every 5 ms advances the morph,
+    /// publishes the tuning and updates `status`, until `stop` is set.
     pub fn start(self: &Arc<Self>) -> std::io::Result<JoinHandle<()>> {
         let shared = self.clone();
         thread::Builder::new()

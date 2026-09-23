@@ -1,5 +1,6 @@
 //! State loading through the public CLAP API, including allocation failure injection.
-// This test supplies its own allocator; run without the realtime allocation guard.
+// `assert_process_allocs` installs the wrapper's own `#[global_allocator]`, which would conflict
+// with this test's allocator.
 #![cfg(not(feature = "assert_process_allocs"))]
 use clap_sys::{
     ext::{

@@ -1,4 +1,4 @@
-// Read-only diagnostic; pass local SCL paths. Does not start an MTS master.
+//! Read-only diagnostic; pass local SCL paths. Does not start an MTS master.
 fn main() {
     for name in std::env::args().skip(1) {
         let path = std::path::Path::new(&name);

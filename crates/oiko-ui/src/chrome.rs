@@ -1,14 +1,21 @@
-//! Shared header and About/zoom menu. Product-specific help follows common controls.
+//! Shared header and About/interface-scale menu. Product-specific help follows
+//! common controls.
 use crate::{layout, scale, theme::Palette, typography::*};
 use egui::{Align2, FontId, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2};
 
+/// Result of drawing the shared header; pass it to `about_menu`.
 pub struct HeaderResponse {
+    /// The centred brand label; the About menu opens beneath it.
     pub anchor: Response,
     pub title_rect: Rect,
+    /// The title or brand label was clicked, or the header was secondary-clicked.
     pub toggle_about: bool,
+    /// The theme button was clicked; `dark` has already been toggled.
     pub theme_changed: bool,
 }
 
+/// Draws the product title, brand label and theme toggle across the full
+/// available width. Flips `dark` when the theme button is clicked.
 pub fn header(ui: &mut Ui, title: &str, dark: &mut bool) -> HeaderResponse {
     let p = Palette::new(*dark);
     let (rect, _) = ui.allocate_exact_size(
@@ -106,9 +113,14 @@ pub struct ProductInfo<'a> {
 }
 pub struct AboutResponse {
     pub is_open: bool,
+    /// Interface scale the user picked this frame. The caller persists and
+    /// applies it, for example with `scale::request_scale`.
     pub scale: Option<f32>,
 }
 
+/// Shows the About menu, toggled by `header.toggle_about`, with interface-scale
+/// buttons and product details. `extra` adds product-specific content after
+/// the version and website.
 pub fn about_menu(
     header: &HeaderResponse,
     product: ProductInfo<'_>,
@@ -165,7 +177,8 @@ pub fn about_menu(
             }
         }
         ui.separator();
-        // Keep zoom reachable while longer About/help text scrolls in a small window.
+        // Keep the scale buttons reachable while longer About/help text scrolls in a
+        // small window.
         let remaining = (content_height - (ui.cursor().top() - top)).max(0.0);
         egui::ScrollArea::vertical()
             .max_height(remaining)

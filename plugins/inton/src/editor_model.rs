@@ -131,7 +131,9 @@ impl ScaleShape {
     }
 }
 
-/// A KBM can skip or remap keys, so its scale length alone cannot describe keyboard spacing.
+/// One-line keyboard mapping summary, such as "Octave: +12 keys · root MIDI 60".
+/// With a KBM it reports a custom mapping, because a KBM can skip or remap keys and
+/// the scale length alone cannot describe keyboard spacing.
 pub fn mapping_summary(preset: &inton_core::tuning::Preset, tuning: &Prepared) -> String {
     let mapping = if preset.kbm_text.is_some() {
         "Custom keyboard mapping".to_owned()
@@ -160,7 +162,7 @@ pub fn adjacent_slot(project: &Project, active: usize, forward: bool) -> Option<
     }
 }
 
-/// Independent presentation choices; the persisted browser-open preference is unchanged.
+/// Which browser tab is shown. Not persisted, and separate from the saved browser-open preference.
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum BrowserTab {
     #[default]

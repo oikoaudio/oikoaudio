@@ -3,7 +3,7 @@ use crate::{
     tuning::{ValidatedScale, default_scale},
 };
 use serde::{Deserialize, Serialize};
-/// Internal routing identity. Host IDs and serialized parameter fields stay in their adapters.
+/// An automatable parameter, independent of host parameter IDs and serialized field names.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum Parameter {
     Position,
@@ -33,12 +33,18 @@ impl Parameter {
     }
 }
 
+/// Values of every automatable parameter. `Parameters::set` clamps each to its range.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Parameters {
+    /// Selected slot, 0–31.
     pub position: usize,
+    /// Morph Time between slots in milliseconds, 0–10000.
     pub morph_ms: f64,
+    /// Reference pitch in Hz, 400–480. The whole table is scaled by `reference / 440`.
     pub reference: f64,
+    /// Transpose in semitones, −24 to 24.
     pub transpose: i32,
+    /// Whether the tuning is published over MTS.
     pub enabled: bool,
 }
 impl Default for Parameters {
@@ -88,6 +94,7 @@ impl Parameters {
         (self.reference / 440.0).log2() + self.transpose as f64 / 12.0
     }
 }
+/// The tuning table for the selected slot, morphing from the previous table over Morph Time.
 pub struct Engine {
     pub parameters: Parameters,
     pub empty: bool,
@@ -158,10 +165,13 @@ impl Engine {
         }
         self.parameters.position = crate::state::moved_index(self.parameters.position, from, to);
     }
+    /// Apply new parameter values. Selecting a different slot, or passing `slot_replaced`
+    /// when the selected slot's contents changed, starts a morph to that slot's table.
+    /// Selecting an empty slot keeps the current table.
     pub fn update(&mut self, parameters: Parameters, p: &Project, slot_replaced: bool) {
         let changed = parameters.position != self.parameters.position || slot_replaced;
         let offset_delta = parameters.offset() - self.parameters.offset();
-        // Reference and chromatic pitch shifts are immediate and independent of Morph Time.
+        // Reference and Transpose changes apply immediately, bypassing Morph Time.
         if offset_delta != 0.0 {
             for table in [&mut self.current, &mut self.source, &mut self.target] {
                 for v in table {
@@ -194,6 +204,7 @@ impl Engine {
             }
         }
     }
+    /// Advance any morph in progress by `seconds`.
     pub fn advance(&mut self, seconds: f64) {
         if self.duration <= 0.0 {
             return;
@@ -208,12 +219,15 @@ impl Engine {
             self.duration = 0.0;
         }
     }
+    /// Current frequency in Hz of each MIDI note.
     pub fn frequencies(&self) -> [f64; 128] {
         self.current.map(f64::exp2)
     }
+    /// Current log2 frequency in Hz of each MIDI note.
     pub fn log_table(&self) -> [f64; 128] {
         self.current
     }
+    /// Morph progress from 0 to 1; 1 when no morph is in progress.
     pub fn progress(&self) -> f64 {
         if self.duration == 0.0 {
             1.0

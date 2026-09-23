@@ -1,10 +1,10 @@
 //! Host-independent mask generation for Oiko Weft.
 
 pub mod particles;
-/// One stored gain value for every bin in the maximum 16,384-sample RFFT.
-/// Smaller processing resolutions land on exact subsets of this master mask.
 pub mod processing;
 
+/// One stored gain value for every bin in the maximum 16,384-sample RFFT.
+/// Smaller processing resolutions land on exact subsets of this master mask.
 pub const MANUAL_MASK_POINTS: usize = 8193;
 pub const MIDI_NOTES: usize = 128;
 pub const MAX_PARTIALS: usize = 24;
@@ -17,9 +17,13 @@ const MAX_MOTION_COMPENSATION_DB: f32 = 12.0;
 #[derive(Clone, Copy, Debug)]
 pub struct MaskVoice {
     pub note: u8,
+    /// Note envelope level; `0.0` contributes nothing.
     pub level: f32,
+    /// Offset in semitones from the equal-tempered pitch of `note`.
     pub tuning_semitones: f32,
     pub pressure: f32,
+    /// Harmonic tilt from `0.0` to `1.0`. `0.5` keeps the configured rolloff;
+    /// lower values darken the partials and higher values brighten them.
     pub timbre: f32,
     /// Base strength (including velocity), bounded to openness before expression.
     pub volume_gain: f32,
@@ -245,7 +249,7 @@ pub fn build_mask_with_voices(
     build_mask_with_voices_impl(output, manual_mask_db, voices, config, None, None);
 }
 
-/// Workspace-backed mask builder for the plug-in's real-time path.
+/// Allocation-free mask builder using the precomputed tables in `workspace`.
 pub fn build_mask_with_voices_precomputed(
     output: &mut [f32],
     manual_mask_db: &[f32; MANUAL_MASK_POINTS],
@@ -267,7 +271,7 @@ pub fn build_mask_with_voices_precomputed(
 
 /// Stereo note contributions use a constant-power pan law with unity at center.
 /// The manual curve, motion and closed-note floor remain shared. Overlapping
-/// contributions retain the existing maximum rule independently on each side.
+/// contributions combine by maximum, independently on each side.
 pub fn build_stereo_masks_with_voices_precomputed(
     left: &mut [f32],
     right: &mut [f32],
@@ -288,7 +292,7 @@ pub fn build_stereo_masks_with_voices_precomputed(
         .iter()
         .all(|voice| voice.level <= 1.0e-5 || voice.pan == 0.0)
     {
-        // Preserve the original single-mask cost for the common centered case.
+        // Centered voices give identical masks; copy rather than rebuild.
         right.copy_from_slice(left);
         return;
     }
@@ -499,8 +503,8 @@ fn rasterize_compact_harmonic_envelope(
 
     // In log-frequency space every harmonic is an equal-width parabola. Its
     // continuous maximum, including partial rolloff, tells us which two
-    // neighbouring integer harmonics can win at a bin. This replaces many
-    // overlapping partial passes with one bounded walk over the spectrum.
+    // neighbouring integer harmonics can win at a bin, so one bounded walk
+    // over the spectrum covers every partial.
     let sigma_octaves = width_cents / 1200.0;
     let natural_rolloff_per_octave = timbre_rolloff * std::f32::consts::LN_10 / 20.0;
     let rolloff_shift = 2.0_f32.powf(-natural_rolloff_per_octave * sigma_octaves * sigma_octaves);
@@ -538,7 +542,7 @@ fn rasterize_compact_harmonic_envelope(
 
 /// Returns the moving field's openness at a frequency. `1.0` is the crest,
 /// where the drawn ceiling is unchanged, and `0.0` receives the full motion
-/// attenuation. This is shared by the DSP and editor visualization.
+/// attenuation.
 pub fn motion_openness(frequency: f32, config: MotionConfig) -> f32 {
     if config.depth_db <= 0.001 || frequency < MIN_DISPLAY_FREQUENCY_HZ {
         return 1.0;

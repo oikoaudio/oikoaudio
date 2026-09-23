@@ -416,6 +416,8 @@ inline KeyboardMapping readKBMStream(std::istream &inf)
             char badChar = '\0';
             while (validLine && *lc != '\0')
             {
+                // A minus sign is accepted only as the first non-blank character of the
+                // reference-note field.
                 if (!(*lc == ' ' || std::isdigit(*lc) || *lc == '.' || *lc == (char)13 ||
                       *lc == '\n' || (state == reference && *lc == '-' && lc == line.c_str() + line.find_first_not_of(" \t"))))
                 {

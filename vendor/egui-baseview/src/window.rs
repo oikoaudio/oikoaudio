@@ -314,8 +314,9 @@ pub enum KeyCapture {
     IgnoreAll,
     /// Only the given keys will be captured from the host.
     CaptureKeys(Vec<keyboard_types::Key>),
-    /// Capture these Command/Ctrl shortcuts even without a focused egui widget.
-    /// Plain keys and other host shortcuts remain ignored.
+    /// Only the given keys pressed with Command (Ctrl outside macOS) and without Alt will be
+    /// captured from the host, whether or not egui wants keyboard input. All other keys go to the
+    /// host, even while a text field has focus.
     CaptureCommands(Vec<keyboard_types::Key>),
     /// All keys except the given ones will be captured from the host.
     IgnoreKeys(Vec<keyboard_types::Key>),
@@ -535,9 +536,10 @@ fn update_modifiers(
     }
 }
 
-/// `baseview::KeyboardEvent::modifiers` describes the state just before the
-/// event. Fold the modifier key itself into that state before forwarding it to
-/// egui so a modifier-only press or release updates the UI immediately.
+/// Returns the modifier state after `event`. Some baseview backends report the modifiers held
+/// before the event: X11 copies them from the key event's `state` field, which the X protocol
+/// defines as the state just before the event. Folding in the modifier key's own press or release
+/// lets a modifier-only event update egui immediately.
 fn modifiers_after_keyboard_event(event: &keyboard_types::KeyboardEvent) -> Modifiers {
     let mut modifiers = event.modifiers;
     let modifier = match event.key {
@@ -978,9 +980,11 @@ fn keyboard_capture_status(
     modifiers: egui::Modifiers,
     widget_wants_input: bool,
 ) -> EventStatus {
+    // Except for `CaptureCommands`, a key is captured only while egui wants keyboard input, so
+    // host shortcuts such as transport keys keep working otherwise.
     let captured = match policy {
-        // These commands are handled at editor level. Forwarding them because
-        // no text widget owns focus would let editor and host both undo.
+        // Capture listed commands regardless of egui's keyboard input so the application alone
+        // handles them; otherwise the application and the host could both act on one shortcut.
         KeyCapture::CaptureCommands(keys) => modifiers.command && !modifiers.alt && keys.contains(key),
         KeyCapture::CaptureAll => widget_wants_input,
         KeyCapture::IgnoreAll => false,

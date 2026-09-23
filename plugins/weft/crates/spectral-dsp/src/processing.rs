@@ -2,7 +2,7 @@
 use oiko_dsp::db_to_gain;
 const SMOOTH_MASK_TIME_SECONDS: f32 = 0.03;
 
-/// Build the canonical dual window for the given overlap. Called during preparation.
+/// Build the canonical dual window for the given overlap.
 /// Panics on mismatched buffers, zero overlap, or a non-divisible window size.
 pub fn build_dual_synthesis_window(analysis: &[f32], synthesis: &mut [f32], overlap: usize) {
     assert_eq!(analysis.len(), synthesis.len());
@@ -36,7 +36,7 @@ pub fn soften_spectral_edges(source: &[f32], output: &mut [f32]) {
     output[last] = source[last];
 }
 
-/// Approach a target gain mask with the established 30 ms time constant. No allocation.
+/// Approach a target gain mask with a 30 ms time constant. No allocation.
 /// Both buffers must have equal lengths and contain finite, nonnegative gains.
 pub fn smooth_mask_in_db(current: &mut [f32], target: &[f32], elapsed_seconds: f32) {
     debug_assert_eq!(current.len(), target.len());

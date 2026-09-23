@@ -73,8 +73,8 @@ struct WowParams {
     #[id = "wow_flutter"]
     wow_flutter: FloatParam,
 
-    // Preserve the original stable ID so existing automation survives the
-    // user-facing rename from Flux to Drift.
+    // `flux` is this parameter's permanent host ID; changing it breaks saved
+    // automation.
     #[id = "flux"]
     drift: FloatParam,
 
@@ -90,7 +90,7 @@ struct WowParams {
     #[id = "depth_behavior"]
     depth_behavior: EnumParam<PluginDepthBehavior>,
 
-    // Append new host parameters so the original main-page order is preserved.
+    // Hosts order parameters by declaration; add new parameters at the end.
     #[id = "rate_sync"]
     rate_sync: BoolParam,
     #[id = "rate_division"]
@@ -218,7 +218,7 @@ impl Default for WowParams {
             // A mode switch crossfades kernels against the same delay history,
             // so this can remain host-visible and automatable without clicks.
             quality: EnumParam::new("Quality", PluginQuality::Hq),
-            // Changing the depth law also changes the required causal delay.
+            // Changing Pitch Range also changes the required causal delay.
             // Hosts may restart processing when the reported latency changes.
             depth_behavior: EnumParam::new("Pitch Range", PluginDepthBehavior::Time)
                 .non_automatable(),
@@ -293,7 +293,7 @@ impl Plugin for WowPlugin {
 
     fn filter_state(state: &mut PluginState) {
         // Missing parameters otherwise retain the current instance's values.
-        // Loading a pre-sync session into a synced instance must restore Hz mode.
+        // State without these parameters loads with sync off and zero phase.
         state
             .params
             .entry("phase_offset".to_owned())
@@ -307,9 +307,9 @@ impl Plugin for WowPlugin {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Self::Editor> {
-        // Seed geometry from the fixed canvas without compounding user zoom.
-        // Hosts may create this editor before restoring state and reuse it on
-        // reopen; WowEditor::build reconciles the size with restored zoom.
+        // Seed geometry from the fixed canvas without compounding the interface
+        // scale. Hosts may create this editor before restoring state and reuse it
+        // on reopen; WowEditor::build reconciles the size with the restored scale.
         let interface_scale = closest_ui_scale(self.params.ui_scale.get());
         self.params.ui_scale.set(interface_scale);
         self.editor_state =
@@ -448,7 +448,7 @@ impl Plugin for WowPlugin {
             self.modulation.set_seed(seed);
         }
         // The sinc bank covers every normal modulation trajectory. Host
-        // automation can move a constant-pitch delay target much faster than
+        // automation can move a Constant-mode delay target much faster than
         // the LFO itself, especially close to the 0.2 Hz depth knee. Bound the
         // actual read-head motion so the rate-aware filter always receives a
         // playback rate it was designed to handle. This also turns a Pitch
@@ -456,9 +456,8 @@ impl Plugin for WowPlugin {
         // restart processing immediately.
         let maximum_delay_step = maximum_supported_rate_delta();
         for frame in buffer.iter_samples() {
-            // Keep free-rate smoothers advancing while synced. Discrete divisions
-            // preserve the running clock. Transport/division anchors settle smoothly;
-            // the read-head slew bound also limits phase-automation delay movement.
+            // `unwrap_or` is deliberate: the free-rate smoothers must keep
+            // advancing while synced.
             let rate = synced_wow.unwrap_or(self.params.rate.smoothed.next() as f64);
             let flutter_rate =
                 synced_flutter.unwrap_or(self.params.flutter_rate.smoothed.next() as f64);
@@ -542,9 +541,9 @@ fn modulation_depths(
             let wow_reference_delta = speed_delta(MAX_DEPTH_CENTS);
             let flutter_reference_delta = speed_delta(MAX_FLUTTER_DEPTH_CENTS);
 
-            // Preserve the constant-power delay-excursion budget of the rate-scaled
+            // Preserve the constant-power delay-excursion budget of Rate-scaled
             // mode, but aim that budget so the balance knob describes the audible
-            // pitch contribution in the same way as it does in constant mode.
+            // pitch contribution in the same way as it does in Constant mode.
             let delay_budget = (wow_reference_delta * TIME_DEPTH_SCALE * wow_weight / MAX_RATE_HZ)
                 .hypot(
                     flutter_reference_delta * TIME_DEPTH_SCALE * flutter_weight
@@ -618,6 +617,9 @@ fn maximum_supported_rate_delta() -> f64 {
     maximum_rate_delta(&[time_wow, time_flutter])
 }
 
+/// Moves from `previous_delay` toward `target_delay` by at most `maximum_step`
+/// samples. Returns the applied delay and the resulting playback rate; the
+/// first call (`None`) jumps to the target at rate 1.
 #[inline]
 fn bounded_delay_step(
     previous_delay: Option<f64>,
@@ -682,8 +684,8 @@ impl ClapPlugin for WowPlugin {
 }
 
 impl Vst3Plugin for WowPlugin {
-    // UUID 728eae36-7e0a-409a-9b92-eb5d9d591386. This is the plug-in's permanent
-    // VST3 identity and must remain stable after the first public build.
+    // Permanent VST3 class ID (UUID 728eae36-7e0a-409a-9b92-eb5d9d591386);
+    // never change it.
     const VST3_CLASS_ID: [u8; 16] = [
         0x72, 0x8e, 0xae, 0x36, 0x7e, 0x0a, 0x40, 0x9a, 0x9b, 0x92, 0xeb, 0x5d, 0x9d, 0x59, 0x13,
         0x86,

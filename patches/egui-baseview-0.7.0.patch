@@ -9,23 +9,25 @@
  use raw_window_handle::HasWindowHandle;
  
  use crate::App;
-@@ -314,6 +314,9 @@
+@@ -314,6 +314,10 @@
      IgnoreAll,
      /// Only the given keys will be captured from the host.
      CaptureKeys(Vec<keyboard_types::Key>),
-+    /// Capture these Command/Ctrl shortcuts even without a focused egui widget.
-+    /// Plain keys and other host shortcuts remain ignored.
++    /// Only the given keys pressed with Command (Ctrl outside macOS) and without Alt will be
++    /// captured from the host, whether or not egui wants keyboard input. All other keys go to the
++    /// host, even while a text field has focus.
 +    CaptureCommands(Vec<keyboard_types::Key>),
      /// All keys except the given ones will be captured from the host.
      IgnoreKeys(Vec<keyboard_types::Key>),
  }
-@@ -532,6 +535,27 @@
+@@ -532,6 +536,28 @@
      }
  }
  
-+/// `baseview::KeyboardEvent::modifiers` describes the state just before the
-+/// event. Fold the modifier key itself into that state before forwarding it to
-+/// egui so a modifier-only press or release updates the UI immediately.
++/// Returns the modifier state after `event`. Some baseview backends report the modifiers held
++/// before the event: X11 copies them from the key event's `state` field, which the X protocol
++/// defines as the state just before the event. Folding in the modifier key's own press or release
++/// lets a modifier-only event update egui immediately.
 +fn modifiers_after_keyboard_event(event: &keyboard_types::KeyboardEvent) -> Modifiers {
 +    let mut modifiers = event.modifiers;
 +    let modifier = match event.key {
@@ -47,7 +49,7 @@
  impl<A: App> WindowHandler for EguiWindow<A> {
      fn on_frame(&self) -> Result<(), HandlerError> {
          let mut do_repaint_now = if let Some(repaint_notifier) = &self.repaint_notifier {
-@@ -633,8 +657,9 @@
+@@ -633,8 +659,9 @@
          }
  
          if let Some(new_size) = new_size {
@@ -59,7 +61,7 @@
              }
          }
  
-@@ -744,8 +769,6 @@
+@@ -744,8 +771,6 @@
      }
  
      fn on_event(&self, event: Event) -> EventStatus {
@@ -68,7 +70,7 @@
          // Parent/embedded windows do not always gain keyboard focus
          // Automatically on click. Request focus explicitly before forwarding the event.
          //
-@@ -847,7 +870,8 @@
+@@ -847,7 +872,8 @@
                  _ => do_repaint = false,
              },
              baseview::Event::Keyboard(event) => {
@@ -78,7 +80,7 @@
  
                  let pressed = event.state == keyboard_types::KeyState::Down;
  
-@@ -894,20 +918,6 @@
+@@ -894,20 +920,6 @@
                      }
                  }
  
@@ -99,7 +101,7 @@
              }
              baseview::Event::Window(event) => match event {
                  baseview::WindowEvent::Focused => {
-@@ -938,16 +948,15 @@
+@@ -938,16 +950,15 @@
              self.inner.borrow().egui_ctx.request_repaint();
          }
  
@@ -124,7 +126,7 @@
              }
              baseview::Event::Mouse(_) => {
                  let egui_ctx = &self.inner.borrow().egui_ctx;
-@@ -963,6 +972,28 @@
+@@ -963,6 +974,30 @@
      }
  }
  
@@ -134,9 +136,11 @@
 +    modifiers: egui::Modifiers,
 +    widget_wants_input: bool,
 +) -> EventStatus {
++    // Except for `CaptureCommands`, a key is captured only while egui wants keyboard input, so
++    // host shortcuts such as transport keys keep working otherwise.
 +    let captured = match policy {
-+        // These commands are handled at editor level. Forwarding them because
-+        // no text widget owns focus would let editor and host both undo.
++        // Capture listed commands regardless of egui's keyboard input so the application alone
++        // handles them; otherwise the application and the host could both act on one shortcut.
 +        KeyCapture::CaptureCommands(keys) => modifiers.command && !modifiers.alt && keys.contains(key),
 +        KeyCapture::CaptureAll => widget_wants_input,
 +        KeyCapture::IgnoreAll => false,
@@ -153,7 +157,7 @@
  fn is_cut_command(modifiers: egui::Modifiers, keycode: keyboard_types::Code) -> bool {
      (modifiers.command && keycode == keyboard_types::Code::KeyX)
          || (cfg!(target_os = "windows")
-@@ -983,3 +1014,82 @@
+@@ -983,3 +1018,82 @@
              && modifiers.shift
              && keycode == keyboard_types::Code::Insert)
  }
