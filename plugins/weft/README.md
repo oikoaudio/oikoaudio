@@ -186,6 +186,6 @@ It writes `target/oiko-spectral-poc.wav` by default.
 
 ## Source boundary
 
-Weft contains no GPL-licensed source. It uses NICE-PLUG's public STFT helper, `realfft`, and original MIT-licensed Oiko code.
+Weft contains no GPL-licensed source. It uses NICE-PLUG's public STFT helper, `realfft`, and original Oiko code licensed under MIT OR Apache-2.0.
 
 Each Weft instance registers one MTS-ESP client. The editor reads the processor's tuning snapshot, so opening the editor adds no client. The snapshot uses bounded atomic storage, and the audio thread never allocates or waits for it. For isolated Linux tests, `WEFT_MTS_LIBRARY` overrides the shared-library path. If the override is unavailable, Weft does not fall back to the system master.
