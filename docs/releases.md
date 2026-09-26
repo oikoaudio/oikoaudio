@@ -10,13 +10,14 @@ Wow, Weft and Inton share one version, set in `[workspace.package].version` in t
 
 Each product also gets `<product>-windows-x86_64.zip` and `<product>-macos-universal.zip`. The macOS bundles contain both arm64 and x86_64 binaries. Every archive contains the CLAP and VST3 bundles. Inton's archives also contain its MTS runtime and installation files. No archive contains an AUv2 build.
 
-The shared build tag must match the workspace version exactly. During publication, the workflow creates the product tags at the same commit and never moves an existing tag. A tag that contains a hyphen creates a prerelease.
+The shared build tag must match the workspace version exactly. During publication, the workflow creates the product tags at the same commit and never moves an existing tag. A tag that contains a hyphen creates a prerelease. Repository rulesets let only admins create, move or delete `v<version>` tags, and stop product tags from moving or disappearing once the workflow creates them. Published releases are immutable.
 
 ## What runs when
 
 | Event | Result |
 | --- | --- |
-| Ordinary branch push | No workflow runs |
+| Push to `main` | Workspace checks, as for a pull request |
+| Push to any other branch | No workflow runs |
 | Pull request | Workspace formatting, Clippy, dependency checks, and tests on Linux, macOS, and Windows |
 | Shared `v<version>` tag push | Tests and bundles all products once per platform, then publishes each product's archives after every platform succeeds and starts the website deployment when configured |
 | Product tag push | No build runs |
@@ -39,7 +40,7 @@ CI does not replace host testing. GUI behavior and host-specific automation or m
 
 The website is a separate repository. Its deploy workflow downloads the newest published release of each product, verifies every archive against the release's `checksums.txt` and `release.json`, and serves them under stable `downloads/<product>/latest/` URLs.
 
-After publication, the release workflow starts that deployment if the `WEBSITE_UPDATE_TOKEN` secret holds a token with Actions write access to `oikoaudio/web`. Without the secret, the job only prints a notice. In that case, start the website's deploy workflow by hand once the website's release notes and manuals are ready.
+After publication, the release workflow starts that deployment if the `WEBSITE_UPDATE_TOKEN` secret of the `release` environment holds a token with Actions write access to `oikoaudio/web`. Without the secret, the job only prints a notice. In that case, start the website's deploy workflow by hand once the website's release notes and manuals are ready.
 
 ## Shared release inputs
 

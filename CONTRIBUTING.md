@@ -19,3 +19,15 @@ Keep development research, experiments and detailed validation records in `.scra
 Write new commit messages as Conventional Commits in the form `type(scope): description`. Use a short imperative description, and add a scope when it helps. Use `feat` for new behavior, `fix` for corrections, `refactor` for restructuring, `docs` for documentation, `test` for tests, `ci` for workflows, `build` for build tooling, and `chore` for maintenance such as dependency upgrades (`chore(deps)`). Mark a breaking change with `!` before the colon and explain the compatibility impact in a `BREAKING CHANGE:` footer. Commit types do not trigger releases. Only a pushed `v<version>` release tag starts a release.
 
 Original Oiko source is licensed under MIT OR Apache-2.0. Keep third-party notices intact. Unless you state otherwise, a contribution you intentionally submit for inclusion, as defined in the Apache License 2.0, is dual licensed under the same terms, without additional terms or conditions. Do not copy or vendor GPL-licensed source. Use published Rust dependencies. Vendor a framework only when a fix documented in `docs/upstream-patches.md` requires it.
+
+## Pull requests
+
+1. Branch: create one branch per feature or fix, starting from `main`.
+2. Scope: keep each pull request to one logical change. Split larger work into several pull requests, because each one becomes a single commit on `main`.
+3. Tests: include tests for the change as described above, and record any native-host behavior you did not test.
+4. Commits: commit on your branch however suits you. The branch is squashed when it merges, so there is no need to rewrite its history.
+5. Title and description: write the title as a Conventional Commit, because it becomes the commit subject. The description becomes the commit body, so explain what changed, why, and any compatibility impact.
+6. Status checks: the workspace checks on Linux, macOS and Windows must pass. For a first-time contributor, they start once a maintainer approves the run.
+7. Review: a code owner listed in `.github/CODEOWNERS` must approve the pull request. New commits dismiss an earlier approval, and every review conversation must be resolved.
+8. Up to date: if `main` has moved on, click `Update branch`. Either option works, because the branch is squashed.
+9. Merge: once the pull request is approved, up to date and green, a maintainer merges it with `Squash and merge`.
