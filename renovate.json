@@ -6,7 +6,7 @@
     "security:minimumReleaseAgeCrate",
     ":enableVulnerabilityAlerts",
     ":maintainLockFilesMonthly",
-    "schedule:weekly"
+    "schedule:monthly"
   ],
   "timezone": "Europe/London",
   "dependencyDashboard": true,
