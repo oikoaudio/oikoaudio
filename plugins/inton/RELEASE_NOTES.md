@@ -1,16 +1,14 @@
-# Oiko Inton 0.5.0-beta.1
+# Oiko Inton 0.5.0-beta.2
 
-Wow, Weft and Inton now share one release version. Sound, controls and automation mappings may change between beta releases. Before updating, keep a copy of the previous plugin version and back up existing projects.
+This beta fixes the editor size on scaled Linux desktops. Sound, controls and automation mappings may change between beta releases. Before updating, keep the previous plugin version and back up existing projects.
 
 ## Changes
 
-- You can resize the editor from 50% to 200% by dragging its corner. The editor reopens at the last zoom level.
-- Inton uses the updated shared editor and plugin framework, which changes host state handling and macOS window sizing.
-- Release archives now include the MTS runtime, installation instructions and third-party notices.
+- On Linux, the editor now opens at the right size on desktops that scale X11 apps, such as KDE Plasma on Wayland at 200% with legacy apps scaling themselves. Before, the host window kept the unscaled size and cropped the enlarged editor. With VST3, the window can open at the smaller size and then grow to fit the editor.
 
 ## Compatibility
 
-This release does not change Inton's parameter identities or Scale set slot numbering. Before saving over an existing project, check that it recalls its tunings and that automated scale changes still play. MTS-ESP tuning still needs the runtime and a compatible instrument.
+Parameter identities, Scale set slot numbering and saved projects are unchanged from 0.5.0-beta.1.
 
 ## Formats and known limitations
 

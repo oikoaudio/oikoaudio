@@ -1,19 +1,14 @@
-# Oiko Wow 0.5.0-beta.1
+# Oiko Wow 0.5.0-beta.2
 
-Wow, Weft and Inton now share one release version. These plugins are still in beta, so sound, controls and automation mappings may change between beta releases. Before updating, keep the previous plugin version and back up existing projects.
+This beta fixes the editor size on scaled Linux desktops. Sound, controls and automation mappings may change between beta releases. Before updating, keep the previous plugin version and back up existing projects.
 
 ## Changes
 
-- Wow and Flutter each sync to host tempo independently. Select Hz or the note symbol beside each rate. Switching modes keeps the rate near its previous speed, within that oscillator's range.
-- A new circular Phase dial rotates both oscillators. Its automation is smoothed, and synced oscillators anchor to the transport. Stereo spread appears as an orange arc around the dial. Drag its degree value or Alt-drag the dial to adjust it, and hold Shift for fine adjustment.
-- The Wow / Flutter balance is now a slider that shows the Wow share, so 90/10 is 90% full.
-- Drag the window corner to resize from 50% to 200%. The editor reopens at the chosen size. Wow also uses the updated shared editor and plugin framework.
+- On Linux, the editor now opens at the right size on desktops that scale X11 apps, such as KDE Plasma on Wayland at 200% with legacy apps scaling themselves. Before, the host window kept the unscaled size and cropped the enlarged editor. With VST3, the window can open at the smaller size and then grow to fit the editor.
 
-## Compatibility with earlier betas
+## Compatibility
 
-Parameter identities and mappings are unchanged. The balance slider changes only the display, so existing Wow / Flutter automation keeps its meaning. The L/R Phase Offset parameter is still the stereo spread. When Wow loads an older state, the new sync controls default to free Hz and the new common phase offset defaults to zero.
-
-Some development builds already had tempo sync. In projects made with them, synced oscillators now anchor to song position when playback starts, loops or seeks, and when the division changes. Drift still adds variation around that position. Check those projects if their sound depended on a free-running synced phase.
+Parameter identities, mappings and saved state are unchanged from 0.5.0-beta.1.
 
 ## Formats and known limitations
 
