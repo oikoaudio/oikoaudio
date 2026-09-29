@@ -2,13 +2,13 @@
 
 [Product page](https://oikoaudio.com/weft/)
 
-> **Beta 0.5.0-beta.1.** These plugins are still in beta, so sound, controls and automation mappings may change between beta releases. Read the [release notes](RELEASE_NOTES.md) before updating existing projects.
+> **Beta 0.5.0-beta.2.** These plugins are still in beta, so sound, controls and automation mappings may change between beta releases. Read the [release notes](../../RELEASE_NOTES.md) before updating existing projects.
 
 **[Download Weft](https://oikoaudio.com/downloads/#weft)** for macOS, Windows, and Linux.
 
 Oiko Weft is a spectral mask for CLAP and VST3 hosts. You draw its FFT gain curve and control it with notes. It reshapes audio that already passes through it and does not generate sound by itself.
 
-If you have existing projects, check Motion Shape automation after updating, especially in VST3. Cloud is a new eighth shape, and adding it changes the normalized positions of the shapes. Saved Splash selections now load as Sprinkle. The [compatibility notes](RELEASE_NOTES.md#compatibility-with-earlier-betas) list the affected mappings.
+If you have existing projects, check Motion Shape automation after updating, especially in VST3. Cloud is a new eighth shape, and adding it changes the normalized positions of the shapes. Saved Splash selections now load as Sprinkle. The [Weft 0.5.0-beta.1 release notes](https://github.com/oikoaudio/oikoaudio/releases/tag/weft/v0.5.0-beta.1) list the affected mappings.
 
 ## Quick start
 

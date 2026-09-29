@@ -1309,7 +1309,7 @@ dependencies = [
 
 [[package]]
 name = "inton"
-version = "0.5.0-beta.1"
+version = "0.5.0-beta.2"
 dependencies = [
  "clap-sys",
  "egui",
@@ -2044,11 +2044,11 @@ dependencies = [
 
 [[package]]
 name = "oiko-dsp"
-version = "0.5.0-beta.1"
+version = "0.5.0-beta.2"
 
 [[package]]
 name = "oiko-plugin"
-version = "0.5.0-beta.1"
+version = "0.5.0-beta.2"
 dependencies = [
  "egui",
  "nice-plug",
@@ -2058,14 +2058,14 @@ dependencies = [
 
 [[package]]
 name = "oiko-tuning"
-version = "0.5.0-beta.1"
+version = "0.5.0-beta.2"
 dependencies = [
  "cc",
 ]
 
 [[package]]
 name = "oiko-ui"
-version = "0.5.0-beta.1"
+version = "0.5.0-beta.2"
 dependencies = [
  "egui",
 ]
@@ -2727,7 +2727,7 @@ dependencies = [
 
 [[package]]
 name = "spectral-plugin"
-version = "0.5.0-beta.1"
+version = "0.5.0-beta.2"
 dependencies = [
  "cc",
  "copypasta",
@@ -3656,7 +3656,7 @@ version = "0.1.0"
 
 [[package]]
 name = "wow-plugin"
-version = "0.5.0-beta.1"
+version = "0.5.0-beta.2"
 dependencies = [
  "egui",
  "nice-assert-no-alloc",

@@ -26,7 +26,9 @@ class Product:
 
 def products() -> dict[str, Product]:
     version = tomllib.loads((ROOT / "Cargo.toml").read_text())["workspace"]["package"]["version"]
-    registry = tomllib.loads((ROOT / "products.toml").read_text())["products"]
+    config_file = tomllib.loads((ROOT / "products.toml").read_text())
+    registry = config_file["products"]
+    notes_file = ROOT / config_file["notes_file"] if "notes_file" in config_file else None
     bundles = tomllib.loads((ROOT / "bundler.toml").read_text())
     result = {}
     for key, config in registry.items():
@@ -36,7 +38,7 @@ def products() -> dict[str, Product]:
         result[key] = Product(
             key, package["name"], version, bundles[package["name"]]["name"],
             (package["name"], *config["test_packages"]), config["linux_archive"],
-            config.get("notes"), ROOT / config["notes_file"] if "notes_file" in config else None,
+            config.get("notes"), notes_file,
             ROOT / config["package_script"] if "package_script" in config else None,
         )
     return result

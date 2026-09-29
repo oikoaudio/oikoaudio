@@ -28,7 +28,7 @@ The manual release workflow builds for all platforms or for one of Linux, Window
 
 ## Preparing a release
 
-Update the workspace version in the root `Cargo.toml` and update the lockfile. Record changes and compatibility warnings in the release notes of all three products. Test the bundles in a host. Commit those changes, then create and push the matching `v<version>` tag. Do not push the three product tags yourself. They do not start builds, and the workflow creates them.
+Update the workspace version in the root `Cargo.toml` and update the lockfile. Record changes and compatibility warnings in the root `RELEASE_NOTES.md`, which becomes the body of all three product releases. Test the bundles in a host. Commit those changes, then create and push the matching `v<version>` tag. Do not push the three product tags yourself. They do not start builds, and the workflow creates them.
 
 Builds use the committed lockfile. The workflow runs the release-tooling tests and the notice-byte checks before it compiles anything. Each platform job tests the plugin packages and the extra test packages listed in `products.toml` in one `cargo test` run, then builds all three plugins with one `cargo xtask` bundle command. The full workspace check also tests each plugin on its own, which catches failures that feature unification hides. The build script checks that every macOS product bundle contains both architectures.
 
@@ -44,7 +44,7 @@ After publication, the release workflow starts that deployment if the `WEBSITE_U
 
 ## Shared release inputs
 
-`products.toml` lists each hosted product's Cargo manifest, additional test packages, Linux archive format, release notes file and optional packaging script. The shared version comes from the root Cargo manifest. The bundle names come from `bundler.toml`. `.github/workflows/release.yml` runs `scripts/workspace_release.py`, which calls the product packaging functions in `scripts/release.py`. Inton also has its own packaging script, `plugins/inton/scripts/package.py`, which adds the MTS runtime.
+`products.toml` names the shared release notes file and lists each hosted product's Cargo manifest, additional test packages, Linux archive format and optional packaging script. The shared version comes from the root Cargo manifest. The bundle names come from `bundler.toml`. `.github/workflows/release.yml` runs `scripts/workspace_release.py`, which calls the product packaging functions in `scripts/release.py`. Inton also has its own packaging script, `plugins/inton/scripts/package.py`, which adds the MTS runtime.
 
 The local entry points use the same configuration as CI:
 

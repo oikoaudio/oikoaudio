@@ -1,20 +1,19 @@
 # Hosted product release inputs. Plugins share the root workspace version;
 # bundle names stay in bundler.toml. Standalone tools need not join this registry.
+notes_file = "RELEASE_NOTES.md"
+
 [products.wow]
 manifest = "plugins/wow/crates/wow-plugin/Cargo.toml"
 test_packages = ["wow-dsp"]
 linux_archive = "tar.gz"
-notes_file = "plugins/wow/RELEASE_NOTES.md"
 
 [products.weft]
 manifest = "plugins/weft/crates/spectral-plugin/Cargo.toml"
 test_packages = ["spectral-dsp", "spectral-render"]
 linux_archive = "tar.gz"
-notes_file = "plugins/weft/RELEASE_NOTES.md"
 
 [products.inton]
 manifest = "plugins/inton/Cargo.toml"
 test_packages = ["inton-core"]
 linux_archive = "zip"
 package_script = "plugins/inton/scripts/package.py"
-notes_file = "plugins/inton/RELEASE_NOTES.md"
