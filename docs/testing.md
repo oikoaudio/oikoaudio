@@ -44,6 +44,15 @@ XDG_DATA_HOME=/tmp/inton-ui-data XDG_CONFIG_HOME=/tmp/inton-ui-config \
   cargo run -p inton --example gui_probe --locked --offline -- "$PWD/target/bundled/Oiko Inton.clap"
 ```
 
+To check sizing at a system scale of 2, run the probe again with an X resource file that sets `Xft.dpi`. KDE Plasma sets this value for XWayland apps that scale themselves at 200%. The probe fails when the size reported to the host differs from the editor window:
+
+```sh
+printf 'Xft.dpi: 192\n' > /tmp/inton-xft-192
+XENVIRONMENT=/tmp/inton-xft-192 INTON_MTS_LIBRARY=/nonexistent/inton-ui-test.so \
+XDG_DATA_HOME=/tmp/inton-ui-data XDG_CONFIG_HOME=/tmp/inton-ui-config \
+  cargo run -p inton --example gui_probe --locked --offline -- "$PWD/target/bundled/Oiko Inton.clap"
+```
+
 Repeat the editor lifecycle, scaling and state recall checks in the release hosts on each platform, including at the maximum zoom of 200%.
 
 ### DAW acceptance

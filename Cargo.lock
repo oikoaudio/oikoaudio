@@ -1689,8 +1689,6 @@ dependencies = [
 [[package]]
 name = "nice-plug-egui"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0db7ca9bdce2cc9bbf4ddb3d1135c7dcebec332063bc414e803008ab9e01b62d"
 dependencies = [
  "crossbeam",
  "egui",

@@ -1,0 +1,60 @@
+--- a/src/editor.rs
++++ b/src/editor.rs
+@@ -95,16 +95,7 @@
+     }
+ 
+     fn resized(&mut self, size: baseview::WindowSize) {
+-        self.egui_state
+-            .system_scale_factor
+-            .store(Some(size.scale_factor as f32));
+-
+-        let current_size = self.egui_state.size();
+-        let new_size = match current_size {
+-            Size::Logical(_) => Size::Logical(size.logical),
+-            Size::Physical(_) => Size::Physical(size.physical),
+-        };
+-        self.egui_state.size.store(new_size);
++        self.egui_state.store_window_size(size);
+ 
+         self.user_app.lock().resized(size);
+     }
+@@ -220,6 +211,17 @@
+             host,
+         )?;
+ 
++        // The window reports its first resize only after the size changes, but hosts query the
++        // editor size as soon as the window exists. Without this, a window created at a system
++        // scale other than 1.0 reports its logical size as native pixels.
++        let created_size = window.size();
++        let total_scale_factor = created_size.scale_factor * zoom_factor as f64;
++        egui_state.store_window_size(baseview::WindowSize {
++            physical: created_size.physical,
++            logical: created_size.physical.to_logical(total_scale_factor),
++            scale_factor: total_scale_factor,
++        });
++
+         self.egui_state.open.store(true, Ordering::Release);
+ 
+         Ok(SpawnedEditor {
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -133,6 +133,19 @@
+         self.size.load()
+     }
+ 
++    /// Record the window's current size. `size.scale_factor` includes the user zoom, and the
++    /// stored size keeps the unit of the size the state was created with.
++    pub(crate) fn store_window_size(&self, size: WindowSize) {
++        self.system_scale_factor
++            .store(Some(size.scale_factor as f32));
++
++        let new_size = match self.size.load() {
++            Size::Logical(_) => Size::Logical(size.logical),
++            Size::Physical(_) => Size::Physical(size.physical),
++        };
++        self.size.store(new_size);
++    }
++
+     fn system_scale_factor(&self) -> f32 {
+         let scale_factor = self.system_scale_factor.load();
+         let fallback_scale_factor = self.fallback_scale_factor.load();
