@@ -2,7 +2,7 @@
 
 [Product page](https://oikoaudio.com/inton/)
 
-> **Beta 0.5.0-beta.1.** Sound, controls and automation mappings may change between beta releases. Read the [release notes](RELEASE_NOTES.md) before updating existing projects.
+> **Beta 0.5.0-beta.2.** Sound, controls and automation mappings may change between beta releases. Read the [release notes](../../RELEASE_NOTES.md) before updating existing projects.
 
 **[Download Inton](https://oikoaudio.com/downloads/#inton)** for macOS, Windows, and Linux.
 

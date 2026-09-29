@@ -10,7 +10,7 @@ Free, open-source audio plugins for macOS, Windows and Linux, in CLAP and VST3 f
 | **Wow** | Wow and flutter by modulating playback speed. Windowed-sinc resampling keeps aliasing low while the pitch moves. | [Wow](plugins/wow/README.md) |
 | **Inton** | Sends tunings to MTS-ESP instruments. Keeps several scales per project and morphs between them. | [Inton](plugins/inton/README.md) |
 
-> **Public beta.** Sound, controls and automation mappings may change between beta releases. Read each plugin's release notes before updating existing projects. Builds are not signed, and macOS builds are not notarized.
+> **Public beta.** Sound, controls and automation mappings may change between beta releases. Read the [release notes](RELEASE_NOTES.md) before updating existing projects. Builds are not signed, and macOS builds are not notarized.
 
 Oikontrol, the Bitwig Studio controller extension, is in the separate [bitwig-oikontrol](https://github.com/oikoaudio/bitwig-oikontrol) repository.
 
