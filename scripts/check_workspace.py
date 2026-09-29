@@ -21,7 +21,7 @@ def run(*args, cwd=ROOT, capture=False):
 
 def check(flags):
     manifest = tomllib.loads((ROOT / "Cargo.toml").read_text())
-    for name in ("nice-plug", "nice-plug-core", "egui-baseview", "baseview"):
+    for name in ("nice-plug", "nice-plug-core", "nice-plug-egui", "egui-baseview", "baseview"):
         source = manifest["patch"]["crates-io"][name]["path"]
         if (ROOT / source).resolve() != ROOT / "vendor" / name:
             raise SystemExit(f"{name} must use the common vendor source")

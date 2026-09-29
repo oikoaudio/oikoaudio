@@ -32,12 +32,12 @@ oiko-ui = { path = "crates/oiko-ui" }
 oiko-plugin = { path = "crates/oiko-plugin" }
 oiko-tuning = { path = "crates/oiko-tuning" }
 
-# Published NicePlug/core 0.4.0 with the local patches recorded below.
-# The unmodified nice-plug-egui 0.5.0 adapter comes from crates.io.
+# Published NicePlug/core 0.4.0 and nice-plug-egui 0.5.0 with the local patches recorded below.
 # See docs/upstream-patches.md for patch provenance and verification.
 [patch.crates-io]
 nice-plug-core = { path = "vendor/nice-plug-core" }
 nice-plug = { path = "vendor/nice-plug" }
+nice-plug-egui = { path = "vendor/nice-plug-egui" }
 egui-baseview = { path = "vendor/egui-baseview" }
 baseview = { path = "vendor/baseview" }
 
