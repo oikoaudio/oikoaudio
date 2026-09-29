@@ -317,6 +317,52 @@
              }),
              _ => None,
          }
+--- a/src/wrapper/vst3/view.rs
++++ b/src/wrapper/vst3/view.rs
+@@ -556,7 +556,9 @@
+ 
+             let fallback_scale_factor = self.fallback_scale_factor.load().map(|s| s as f64);
+ 
+-            match self.editor.upgrade().unwrap().lock().spawn(
++            let editor = self.editor.upgrade().unwrap();
++            let reported_size = editor.lock().size();
++            let spawned = editor.lock().spawn(
+                 Some(parent_handle),
+                 false,
+                 fallback_scale_factor,
+@@ -565,11 +567,31 @@
+                     callbacks,
+                     main_thread_caller,
+                 }),
+-            ) {
++            );
++            match spawned {
+                 Ok(editor_window) => match editor_window.handle.show(&editor_window.window) {
+                     Ok(()) => {
+                         *window = Some(Fragile::new(editor_window));
+                         inner.is_editor_open.store(true, Ordering::SeqCst);
++
++                        // The host sized its frame from `getSize()` before the window existed,
++                        // and the editor learns the platform scale factor only when it creates
++                        // the window. Ask the host to fit the frame when the two sizes differ.
++                        let spawned_size = editor.lock().size();
++                        if spawned_size != reported_size {
++                            let view = inner.plug_view.read().clone().unwrap();
++                            let task = Task::RequestResize {
++                                size: spawned_size.into(),
++                                // A native size converts back unchanged at any scale factor.
++                                scale_factor: 1.0,
++                            };
++                            if let Err(task) = view.do_maybe_in_run_loop(task)
++                                && !inner.schedule_gui(task)
++                            {
++                                crate::nice_error!("Failed to post the initial editor resize");
++                            }
++                        }
++
+                         kResultOk
+                     }
+                     Err(e) => {
 --- a/src/wrapper/vst3/wrapper.rs
 +++ b/src/wrapper/vst3/wrapper.rs
 @@ -1047,6 +1047,7 @@
