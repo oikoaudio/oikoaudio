@@ -207,13 +207,15 @@ impl WowEditor {
             Vec2::new(EDITOR_WIDTH, EDITOR_HEIGHT),
             self.params.ui_scale.get(),
         ) {
-            self.params.ui_scale.set(scale);
-            request_settled_scale(root_ui.ctx(), scale);
+            select_scale(root_ui.ctx(), &self.params.ui_scale, scale);
         }
     }
 }
 
-fn request_settled_scale(context: &egui::Context, scale: f32) {
+/// Apply a scale chosen in the editor and remember it for new instances.
+fn select_scale(context: &egui::Context, ui_scale: &crate::UiScaleState, scale: f32) {
+    ui_scale.set(scale);
+    let _ = crate::ui_scale_preference().store(scale);
     oiko_ui::scale::request_scale(context, scale, Vec2::new(EDITOR_WIDTH, EDITOR_HEIGHT));
 }
 
@@ -243,8 +245,7 @@ fn header(
     );
     *about_open = response.is_open;
     if let Some(scale) = response.scale {
-        ui_scale.set(scale);
-        request_settled_scale(ui.ctx(), scale);
+        select_scale(ui.ctx(), ui_scale, scale);
     }
 }
 

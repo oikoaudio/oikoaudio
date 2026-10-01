@@ -129,3 +129,78 @@ fn loaded_user_descriptions_are_preserved_and_searchable_without_eager_parsing()
     assert_eq!(lib.search("copper").len(), 1);
     std::fs::remove_dir_all(folder).unwrap();
 }
+
+#[test]
+fn legacy_storage_moves_into_the_vendor_folder() {
+    use inton::library::migrate_legacy_storage;
+    use oiko_plugin::user_storage::{PREFERENCES_FILE, product_relative_dir};
+    let relative = product_relative_dir("Inton");
+    for shared_home in [false, true] {
+        let root = temp(&format!("legacy-{shared_home}"));
+        let config = root.join("config");
+        let data = if shared_home {
+            config.clone()
+        } else {
+            root.join("data")
+        };
+        let legacy_scales = data.join("oiko/inton/scales");
+        fs::create_dir_all(&legacy_scales).unwrap();
+        fs::write(legacy_scales.join("mine.scl"), twelve_edo().scl_text).unwrap();
+        let mut prefs = Preferences {
+            folder: legacy_scales.clone(),
+            ..Default::default()
+        };
+        prefs.favorites.insert("user:mine".into());
+        prefs
+            .favorites
+            .insert(format!("user:{}", legacy_scales.join("mine.scl").display()));
+        prefs
+            .save_to(&config.join("oiko/inton").join(PREFERENCES_FILE))
+            .unwrap();
+
+        migrate_legacy_storage(&config, &data);
+
+        let moved = Preferences::load_from(&config.join(&relative).join(PREFERENCES_FILE)).unwrap();
+        let scales = data.join(&relative).join("scales");
+        assert!(moved.favorites.contains("user:mine"));
+        assert!(
+            moved
+                .favorites
+                .contains(&format!("user:{}", scales.join("mine.scl").display()))
+        );
+        assert_eq!(
+            moved.favorites.len(),
+            Preferences::default().favorites.len() + 2
+        );
+        assert_eq!(moved.folder, scales);
+        assert!(moved.folder.join("mine.scl").is_file());
+        assert!(!config.join("oiko").exists());
+        assert!(!data.join("oiko").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn legacy_storage_never_replaces_the_current_folder_or_a_custom_library() {
+    use inton::library::migrate_legacy_storage;
+    use oiko_plugin::user_storage::{PREFERENCES_FILE, product_relative_dir};
+    let relative = product_relative_dir("Inton");
+    let home = temp("legacy-existing");
+    fs::create_dir_all(home.join("oiko/inton")).unwrap();
+    fs::create_dir_all(home.join(&relative)).unwrap();
+    migrate_legacy_storage(&home, &home);
+    assert!(home.join("oiko/inton").is_dir());
+    fs::remove_dir_all(home.join(&relative)).unwrap();
+
+    let custom = home.join("elsewhere");
+    Preferences {
+        folder: custom.clone(),
+        ..Default::default()
+    }
+    .save_to(&home.join("oiko/inton").join(PREFERENCES_FILE))
+    .unwrap();
+    migrate_legacy_storage(&home, &home);
+    let moved = Preferences::load_from(&home.join(&relative).join(PREFERENCES_FILE)).unwrap();
+    assert_eq!(moved.folder, custom);
+    fs::remove_dir_all(home).unwrap();
+}

@@ -142,7 +142,7 @@ The graph spaces frequencies logarithmically, but FFT bins are evenly spaced in 
 
 A thin peak meter along the top of Output measures the final audio leaving Weft. It turns orange at or above 0 dBFS. The underline below the value still shows the output gain setting. The meter only indicates level and does not limit it.
 
-Click `OIKO AUDIO` in the title bar to open the About panel. The panel sets the interface scale from 50% to 200% in 25% steps. The default is 100%. Click elsewhere or press Escape to close the panel.
+Click `OIKO AUDIO` in the title bar to open the About panel. The panel sets the interface scale from 50% to 200% in 25% steps. New instances open at the scale you last chose in Weft, or at 100% before you first change it, and a saved project reopens at the scale it was saved with. Click elsewhere or press Escape to close the panel.
 
 Drag the bottom-right corner to choose a zoom level from 50% to 200% in 25% steps. The selected percentage appears in the center, and the window resizes when you release. The aspect ratio stays fixed. Press Escape during the drag to cancel.
 

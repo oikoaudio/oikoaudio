@@ -1,7 +1,7 @@
 //! Host parameter controls, header and spectrum range menu.
 use super::parameter_history::TrackedParamSetter;
 use super::rendering::{mix_color, with_alpha};
-use super::request_settled_scale;
+use super::select_scale;
 use crate::parameters::{MotionRateDivision, SpectralParams};
 use egui::{
     Align2, Color32, FontId, Id, Key, Pos2, Rect, Sense, Stroke, StrokeKind, TextEdit, Vec2,
@@ -955,8 +955,7 @@ pub(super) fn header(
     );
     *about_open = response.is_open;
     if let Some(scale) = response.scale {
-        ui_scale.set(scale);
-        request_settled_scale(ui.ctx(), scale);
+        select_scale(ui.ctx(), ui_scale, scale);
     }
 }
 

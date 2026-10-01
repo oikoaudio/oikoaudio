@@ -87,7 +87,7 @@ Inton loads the library from the official location for each platform:
 
 ## Scale files and preferences
 
-Inton stores its scales and preferences in the standard per-user data directories. These are `~/.local/share` and `~/.config` on Linux, `~/Library/Application Support` on macOS, and `%LOCALAPPDATA%` on Windows. The plugin state embeds every scale a project uses, including its keyboard mapping.
+Inton stores its scales and preferences in the standard per-user data directories. On Linux these are `~/.local/share/oikoaudio/inton` and `~/.config/oikoaudio/inton`. On macOS the folder is `~/Library/Application Support/Oiko Audio/Inton`, and on Windows it is `%LOCALAPPDATA%\Oiko Audio\Inton`. Inton 0.5.0-beta.2 and earlier used an `oiko/inton` folder in the same places, and newer versions move it, including your favourites and library, the first time they load. The plugin state embeds every scale a project uses, including its keyboard mapping.
 
 ## Developer references
 

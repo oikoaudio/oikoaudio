@@ -180,7 +180,11 @@ pub struct SpectralPlugin {
 
 impl Default for SpectralPlugin {
     fn default() -> Self {
-        let params = Arc::new(SpectralParams::default());
+        let params = SpectralParams::default();
+        if let Some(scale) = state::ui_scale_preference().load() {
+            params.ui_scale.set(scale);
+        }
+        let params = Arc::new(params);
         Self {
             params,
             editor_state: EguiEditorState::from_size(
