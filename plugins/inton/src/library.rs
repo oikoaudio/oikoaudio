@@ -1,4 +1,6 @@
 use inton_core::tuning::{MAX_TUNING_BYTES, Preset, ValidatedScale};
+pub use oiko_plugin::user_storage::atomic_write;
+use oiko_plugin::user_storage::{Location, PREFERENCES_FILE, product_relative_dir};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeSet, HashMap},
@@ -56,52 +58,94 @@ fn records() -> Vec<FactoryRecord> {
     serde_json::from_str(include_str!("../resources/library.json"))
         .expect("validated factory metadata")
 }
+const PRODUCT: &str = "Inton";
+/// Storage folder used before the vendor folder, relative to each per-user base directory.
+const LEGACY_DIR: &str = "oiko/inton";
 pub fn data_home() -> PathBuf {
-    platform_data_home().join("oiko/inton")
-}
-#[cfg(all(not(test), target_os = "linux"))]
-fn platform_data_home() -> PathBuf {
-    xdg_home("XDG_DATA_HOME", ".local/share")
-}
-#[cfg(all(not(test), target_os = "macos"))]
-fn platform_data_home() -> PathBuf {
-    home_dir().join("Library/Application Support")
-}
-#[cfg(all(not(test), target_os = "windows"))]
-fn platform_data_home() -> PathBuf {
-    std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home_dir().join("AppData/Local"))
-}
-#[cfg(not(test))]
-fn home_dir() -> PathBuf {
-    std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
-}
-#[cfg(all(not(test), target_os = "linux"))]
-fn xdg_home(var: &str, fallback: &str) -> PathBuf {
-    std::env::var_os(var)
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .unwrap_or_else(|| home_dir().join(fallback))
+    storage_home(Location::Data)
 }
 pub fn preferences_path() -> PathBuf {
-    platform_config_home().join("oiko/inton/preferences.json")
+    storage_home(Location::Config).join(PREFERENCES_FILE)
 }
-#[cfg(all(not(test), target_os = "linux"))]
-fn platform_config_home() -> PathBuf {
-    xdg_home("XDG_CONFIG_HOME", ".config")
+fn storage_home(location: Location) -> PathBuf {
+    platform_home(location).join(product_relative_dir(PRODUCT))
 }
-#[cfg(all(not(test), target_os = "macos"))]
-fn platform_config_home() -> PathBuf {
-    home_dir().join("Library/Application Support")
+/// Move the user's Inton folders from their pre-vendor-folder location, once
+/// per process. Call before the first read of preferences or library files.
+pub fn migrate_user_storage() {
+    static MIGRATION: std::sync::Once = std::sync::Once::new();
+    MIGRATION.call_once(|| {
+        migrate_legacy_storage(
+            &platform_home(Location::Config),
+            &platform_home(Location::Data),
+        )
+    });
 }
-#[cfg(all(not(test), target_os = "windows"))]
-fn platform_config_home() -> PathBuf {
-    platform_data_home()
+/// Move Inton's folders from `oiko/inton` to the vendor folder under each
+/// per-user base directory, unless the new folder already exists. Library
+/// paths in the preferences that point into the moved data folder follow it.
+/// The preferences are updated before they move, so a reader never sees the
+/// new preferences with old library paths. A failed move leaves the old
+/// folders in place.
+pub fn migrate_legacy_storage(config_home: &Path, data_home: &Path) {
+    let relative = product_relative_dir(PRODUCT);
+    let legacy_preferences = config_home.join(LEGACY_DIR).join(PREFERENCES_FILE);
+    let (legacy_data, current_data) = (data_home.join(LEGACY_DIR), data_home.join(&relative));
+    if data_home == config_home {
+        if movable(&legacy_data, &current_data) {
+            rewrite_library_paths(&legacy_preferences, &legacy_data, &current_data);
+            if !move_dir(&legacy_data, &current_data) {
+                rewrite_library_paths(&legacy_preferences, &current_data, &legacy_data);
+            }
+        }
+        return;
+    }
+    if movable(&legacy_data, &current_data) && move_dir(&legacy_data, &current_data) {
+        rewrite_library_paths(&legacy_preferences, &legacy_data, &current_data);
+    }
+    let (legacy_config, current_config) =
+        (config_home.join(LEGACY_DIR), config_home.join(&relative));
+    if movable(&legacy_config, &current_config) {
+        move_dir(&legacy_config, &current_config);
+    }
 }
+fn movable(legacy: &Path, current: &Path) -> bool {
+    legacy.is_dir() && !current.exists()
+}
+fn move_dir(legacy: &Path, current: &Path) -> bool {
+    let moved = current
+        .parent()
+        .is_some_and(|parent| fs::create_dir_all(parent).is_ok())
+        && fs::rename(legacy, current).is_ok();
+    if moved && let Some(vendor) = legacy.parent() {
+        // Only succeeds when no other files remain in the old vendor folder.
+        let _ = fs::remove_dir(vendor);
+    }
+    moved
+}
+/// Point the library folder and user favorites inside `from` at the same
+/// place inside `to`. User favorite IDs embed the scale's absolute path.
+fn rewrite_library_paths(preferences: &Path, from: &Path, to: &Path) {
+    let Ok(mut prefs) = Preferences::load_from(preferences) else {
+        return;
+    };
+    let relocate = |path: &Path| path.strip_prefix(from).ok().map(|rest| to.join(rest));
+    if let Some(folder) = relocate(&prefs.folder) {
+        prefs.folder = folder;
+    }
+    prefs.favorites = prefs
+        .favorites
+        .iter()
+        .map(|id| {
+            id.strip_prefix("user:")
+                .and_then(|path| relocate(Path::new(path)))
+                .map_or_else(|| id.clone(), |path| format!("user:{}", path.display()))
+        })
+        .collect();
+    let _ = prefs.save_to(preferences);
+}
+#[cfg(not(test))]
+use oiko_plugin::user_storage::platform_home;
 // Unit tests exercise real preference writes, but each test thread owns its
 // storage so UI tests cannot change another test's favorites, zoom or library.
 #[cfg(test)]
@@ -126,12 +170,11 @@ fn test_storage_home() -> PathBuf {
     STORAGE.with(|storage| storage.0.clone())
 }
 #[cfg(test)]
-fn platform_data_home() -> PathBuf {
-    test_storage_home().join("data")
-}
-#[cfg(test)]
-fn platform_config_home() -> PathBuf {
-    test_storage_home().join("config")
+fn platform_home(location: Location) -> PathBuf {
+    test_storage_home().join(match location {
+        Location::Config => "config",
+        Location::Data => "data",
+    })
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -162,34 +205,6 @@ impl Preferences {
             &serde_json::to_vec_pretty(self).map_err(|e| e.to_string())?,
         )
     }
-}
-pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    let parent = path.parent().ok_or("Path has no parent")?;
-    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    let tmp = parent.join(format!(
-        ".inton-{}-{}.tmp",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    use std::io::Write;
-    let mut f = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&tmp)
-        .map_err(|e| e.to_string())?;
-    let result = (|| {
-        f.write_all(bytes)?;
-        f.sync_all()?;
-        fs::rename(&tmp, path)
-    })()
-    .map_err(|e: std::io::Error| e.to_string());
-    if result.is_err() {
-        let _ = fs::remove_file(tmp);
-    }
-    result
 }
 fn read_text(path: &Path) -> Result<String, String> {
     let mut f = fs::File::open(path)

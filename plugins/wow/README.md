@@ -46,7 +46,7 @@ At each anchor, the oscillator's phase and seeded Drift restart from the beat po
 
 The display shows the combined left and right motion of the current settings. Random Seed makes Drift repeat the same way when you reopen a session.
 
-New instances open at 0.6 Hz Wow, 12 Hz Flutter, a 90/10 Wow/Flutter balance, 50% Amount, 50% Drift, and a mono-linked 0° L/R phase offset.
+New instances open at 0.6 Hz Wow, 12 Hz Flutter, a 90/10 Wow/Flutter balance, 50% Amount, 50% Drift, and a mono-linked 0° L/R phase offset. They open at the editor zoom you last chose in Wow, while a saved project reopens at the zoom it was saved with.
 
 The footer holds two settings you change less often:
 

@@ -11,6 +11,7 @@ egui.workspace = true
 nice-plug.workspace = true
 nice-plug-egui.workspace = true
 oiko-ui = { path = "../oiko-ui" }
+serde_json = "1"
 
 [package.metadata.oiko]
 role = "host"

@@ -15,6 +15,7 @@ use nice_plug_egui::{
     EguiEditor, EguiEditorState, EguiNiceSettings, RepaintNotifier, create_egui_editor,
 };
 use oiko_dsp::fractional_delay::{QualityMode, QualityVariableDelayF32, SincBankF32};
+use oiko_plugin::user_storage::UiScalePreference;
 use std::{
     num::NonZeroU32,
     sync::{Arc, OnceLock},
@@ -235,8 +236,12 @@ impl Default for WowParams {
 
 impl Default for WowPlugin {
     fn default() -> Self {
+        let params = WowParams::default();
+        if let Some(scale) = ui_scale_preference().load() {
+            params.ui_scale.set(scale);
+        }
         Self {
-            params: Arc::new(WowParams::default()),
+            params: Arc::new(params),
             channels: Vec::new(),
             sample_rate: 48_000.0,
             modulation: ModulationEngine::new(48_000.0, 1),
@@ -519,6 +524,15 @@ impl Plugin for WowPlugin {
             }
         }
         ProcessStatus::Normal
+    }
+}
+
+fn ui_scale_preference() -> UiScalePreference {
+    // Tests must not read or replace the user's remembered zoom.
+    if cfg!(test) {
+        UiScalePreference::disabled()
+    } else {
+        UiScalePreference::for_product("Wow")
     }
 }
 

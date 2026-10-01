@@ -143,8 +143,7 @@ impl NiceEguiApp for SpectralEditor {
             Vec2::new(EDITOR_WIDTH, EDITOR_HEIGHT),
             self.params.ui_scale.get(),
         ) {
-            self.params.ui_scale.set(scale);
-            request_settled_scale(root_ui.ctx(), scale);
+            select_scale(root_ui.ctx(), &self.params.ui_scale, scale);
         }
     }
 
@@ -721,7 +720,10 @@ fn consume_escape_for_temporary_mode(context: &egui::Context, mode_active: bool)
     mode_active && context.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::Escape))
 }
 
-fn request_settled_scale(context: &egui::Context, scale: f32) {
+/// Apply a scale chosen in the editor and remember it for new instances.
+fn select_scale(context: &egui::Context, ui_scale: &crate::state::UiScaleState, scale: f32) {
+    ui_scale.set(scale);
+    let _ = crate::state::ui_scale_preference().store(scale);
     oiko_ui::scale::request_scale(context, scale, Vec2::new(EDITOR_WIDTH, EDITOR_HEIGHT));
 }
 

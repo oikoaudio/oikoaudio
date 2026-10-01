@@ -12,6 +12,16 @@ use std::sync::{
 };
 
 pub(crate) type UiScaleState = oiko_plugin::UiScaleState<100>;
+use oiko_plugin::user_storage::UiScalePreference;
+
+pub(crate) fn ui_scale_preference() -> UiScalePreference {
+    // Tests must not read or replace the user's remembered zoom.
+    if cfg!(test) {
+        UiScalePreference::disabled()
+    } else {
+        UiScalePreference::for_product("Weft")
+    }
+}
 use nice_plug::params::{internals::ParamPtr, persist::deserialize_field};
 use nice_plug::plugin::ParamValue;
 

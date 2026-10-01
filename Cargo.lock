@@ -2054,6 +2054,7 @@ dependencies = [
  "nice-plug",
  "nice-plug-egui",
  "oiko-ui",
+ "serde_json",
 ]
 
 [[package]]

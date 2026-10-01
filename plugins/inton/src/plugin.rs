@@ -296,6 +296,7 @@ pub struct IntonPlugin {
 
 impl Default for IntonPlugin {
     fn default() -> Self {
+        crate::library::migrate_user_storage();
         let shared = Arc::new(Shared::new());
         let params = Arc::new(IntonParams::new(shared.clone()));
         let (editor_state, worker) = initial_state(&shared);

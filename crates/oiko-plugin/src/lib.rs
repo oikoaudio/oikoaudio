@@ -26,3 +26,5 @@ pub fn editor_state(
 pub mod gestures;
 
 pub mod parameter_controls;
+
+pub mod user_storage;
