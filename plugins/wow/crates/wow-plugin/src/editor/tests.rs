@@ -224,11 +224,13 @@ fn phase_wraps_and_spread_and_balance_edit_their_own_parameters() {
             assert_eq!(params.phase_offset.value(), phase);
             let id = Id::new(("slider", params.wow_flutter.as_ptr()));
             let rect = ui.context.read_response(id).unwrap().rect;
-            // Drag to the right endpoint: full Wow means the existing Flutter fraction is zero.
-            ui.drag(id, Vec2::new(rect.width() * 0.5 - 8.0, 0.0));
-            assert!(params.wow_flutter.value() < 1e-5);
+            // The slider reads left to right like its label: Wow at the left end, Flutter at the right.
             ui.drag(id, Vec2::new(-rect.width() * 0.5 + 8.0, 0.0));
+            assert!(params.wow_flutter.value() < 1e-5);
+            assert_eq!(params.wow_flutter.to_string(), "100/0");
+            ui.drag(id, Vec2::new(rect.width() * 0.5 - 8.0, 0.0));
             assert!((params.wow_flutter.value() - 1.0).abs() < 1e-5);
+            assert_eq!(params.wow_flutter.to_string(), "0/100");
             assert_eq!(params.phase_offset.value(), phase);
         }
     }
