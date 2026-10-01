@@ -312,3 +312,45 @@ fn phase_dial_alt_drag_keeps_its_parameter_and_host_gesture_until_release() {
         }
     }
 }
+
+fn painted_texts(output: &egui::FullOutput) -> Vec<String> {
+    fn collect(shape: &egui::Shape, texts: &mut Vec<String>) {
+        match shape {
+            egui::Shape::Text(text) => texts.push(text.galley.text().to_owned()),
+            egui::Shape::Vec(shapes) => shapes.iter().for_each(|shape| collect(shape, texts)),
+            _ => {}
+        }
+    }
+    let mut texts = Vec::new();
+    for clipped in &output.shapes {
+        collect(&clipped.shape, &mut texts);
+    }
+    texts
+}
+
+#[test]
+fn balance_slider_names_its_ends_without_showing_its_value() {
+    let mut ui = Harness::new(true, 1.0);
+    let params = ui.editor.params.clone();
+    ui.frame(vec![]);
+    let texts = painted_texts(&ui.frame(vec![]));
+    assert!(texts.iter().any(|text| text == "FLUTTER"));
+    assert!(!texts.contains(&params.wow_flutter.to_string()));
+
+    let id = Id::new(("slider", params.wow_flutter.as_ptr()));
+    let start = ui.context.read_response(id).unwrap().rect.center();
+    ui.frame(vec![
+        egui::Event::PointerMoved(start),
+        egui::Event::PointerButton {
+            pos: start,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        },
+    ]);
+    // A tooltip would be laid out invisibly on its first frame, so check later frames too.
+    for x in [20.0, 30.0] {
+        let output = ui.frame(vec![egui::Event::PointerMoved(start + Vec2::new(x, 0.0))]);
+        assert!(!painted_texts(&output).contains(&params.wow_flutter.to_string()));
+    }
+}
