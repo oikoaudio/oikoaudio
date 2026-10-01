@@ -127,7 +127,12 @@ impl WowEditor {
         );
 
         Frame::NONE
-            .inner_margin(egui::Margin::symmetric(8, 15))
+            .inner_margin(egui::Margin {
+                left: 8,
+                right: 8,
+                top: 15,
+                bottom: 9,
+            })
             .show(ui, |ui| {
                 ui.columns(4, |columns| {
                     rate_knob(
@@ -166,7 +171,7 @@ impl WowEditor {
                     );
                 });
 
-                ui.add_space(8.0);
+                ui.add_space(14.0);
                 ui.columns(2, |columns| {
                     Frame::NONE
                         .inner_margin(egui::Margin {
@@ -176,7 +181,13 @@ impl WowEditor {
                             bottom: 0,
                         })
                         .show(&mut columns[0], |ui| {
-                            parameter_slider(ui, "DRIFT", &self.params.drift, setter, palette);
+                            parameter_slider(
+                                ui,
+                                SliderLabels::Value("DRIFT"),
+                                &self.params.drift,
+                                setter,
+                                palette,
+                            );
                         });
                     Frame::NONE
                         .inner_margin(egui::Margin {
@@ -188,7 +199,7 @@ impl WowEditor {
                         .show(&mut columns[1], |ui| {
                             parameter_slider(
                                 ui,
-                                "WOW / FLUTTER",
+                                SliderLabels::Ends("WOW", "FLUTTER"),
                                 &self.params.wow_flutter,
                                 setter,
                                 palette,
@@ -540,38 +551,55 @@ fn rate_readout(
     );
 }
 
+/// The text row above a slider.
+#[derive(Clone, Copy)]
+enum SliderLabels<'a> {
+    /// The control's name on the left and its value on the right.
+    Value(&'a str),
+    /// What each end of the range gives, for a blend between two sources.
+    Ends(&'a str, &'a str),
+}
+
+const SLIDER_THUMB_RADIUS: f32 = 7.5;
+/// Space between a slider's labels and its thumb. It matches the space between
+/// a knob's title and its dial: the item spacing plus the dial's 1-point inset.
+const SLIDER_LABEL_GAP: f32 = 7.0;
+
 fn parameter_slider<P: Param>(
     ui: &mut egui::Ui,
-    label: &str,
+    labels: SliderLabels<'_>,
     param: &P,
     setter: &oiko_plugin::gestures::GestureSetter<'_>,
     palette: Palette,
 ) {
     let (label_rect, _) =
         ui.allocate_exact_size(Vec2::new(ui.available_width(), 18.0), Sense::hover());
-    ui.painter().text(
-        Pos2::new(label_rect.left() + 8.0, label_rect.center().y),
-        Align2::LEFT_CENTER,
-        label,
-        FontId::new(
-            oiko_ui::typography::TEXT_SMALL,
-            egui::FontFamily::Proportional,
-        ),
-        palette.muted,
-    );
-    ui.painter().text(
-        Pos2::new(label_rect.right() - 8.0, label_rect.center().y),
-        Align2::RIGHT_CENTER,
-        param.to_string(),
-        FontId::new(
-            oiko_ui::typography::TEXT_SMALL,
-            egui::FontFamily::Proportional,
-        ),
-        palette.ink,
-    );
     let (rect, _) = ui.allocate_exact_size(
         Vec2::new(ui.available_width(), 24.0),
         Sense::click_and_drag(),
+    );
+    let font = FontId::new(
+        oiko_ui::typography::TEXT_SMALL,
+        egui::FontFamily::Proportional,
+    );
+    let (left, right, right_color) = match labels {
+        SliderLabels::Value(name) => (name.to_owned(), param.to_string(), palette.ink),
+        SliderLabels::Ends(left, right) => (left.to_owned(), right.to_owned(), palette.muted),
+    };
+    let label_bottom = rect.center().y - SLIDER_THUMB_RADIUS - SLIDER_LABEL_GAP;
+    ui.painter().text(
+        Pos2::new(label_rect.left() + 8.0, label_bottom),
+        Align2::LEFT_BOTTOM,
+        left,
+        font.clone(),
+        palette.muted,
+    );
+    ui.painter().text(
+        Pos2::new(label_rect.right() - 8.0, label_bottom),
+        Align2::RIGHT_BOTTOM,
+        right,
+        font,
+        right_color,
     );
     let response = ui.interact(
         rect,
@@ -587,10 +615,11 @@ fn parameter_slider<P: Param>(
     let filled = Rect::from_min_max(track.left_top(), Pos2::new(x, track.bottom()));
     ui.painter().rect_filled(filled, 2.0, palette.blue);
     let thumb = Pos2::new(x, rect.center().y);
-    ui.painter().circle_filled(thumb, 7.5, palette.track);
+    ui.painter()
+        .circle_filled(thumb, SLIDER_THUMB_RADIUS, palette.track);
     ui.painter().circle_stroke(
         thumb,
-        7.5,
+        SLIDER_THUMB_RADIUS,
         Stroke::new(
             1.0,
             if response.hovered() || response.dragged() {

@@ -26,7 +26,7 @@ The difference is most audible on exposed high frequencies and when you layer se
 
 - **Wow Rate** sets the slow oscillator from 0.1 to 4 Hz.
 - **Flutter Rate** sets the fast oscillator from 6 to 30 Hz.
-- **Wow / Flutter** blends the two oscillators with a constant-power law. The readout shows the Wow and Flutter shares in that order. Moving left adds Wow, and moving right adds Flutter.
+- **Wow / Flutter** blends the two oscillators with a constant-power law. Moving the slider toward WOW adds Wow, and moving it toward FLUTTER adds Flutter. The host shows the Wow and Flutter shares in that order, such as 90/10.
 - **Amount** sets the total pitch movement.
 - **Drift** adds repeatable, smoothly changing variation to both oscillator rates.
 - **Phase** rotates both oscillators through a full cycle. The blue pointer shows the common phase offset. Drag the dial or its degree readout, and hold Shift for fine adjustment. The control wraps through zero. Automation follows the shortest circular path with a 20 ms smoothing time constant. Fast phase changes still move pitch, but Wow limits how fast the delay changes during the transition.
