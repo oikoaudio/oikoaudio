@@ -176,14 +176,7 @@ impl WowEditor {
                             bottom: 0,
                         })
                         .show(&mut columns[0], |ui| {
-                            parameter_slider(
-                                ui,
-                                "DRIFT",
-                                &self.params.drift,
-                                setter,
-                                palette,
-                                false,
-                            );
+                            parameter_slider(ui, "DRIFT", &self.params.drift, setter, palette);
                         });
                     Frame::NONE
                         .inner_margin(egui::Margin {
@@ -199,7 +192,6 @@ impl WowEditor {
                                 &self.params.wow_flutter,
                                 setter,
                                 palette,
-                                true,
                             );
                         });
                 });
@@ -553,7 +545,6 @@ fn parameter_slider<P: Param>(
     param: &P,
     setter: &oiko_plugin::gestures::GestureSetter<'_>,
     palette: Palette,
-    inverted: bool,
 ) {
     let (label_rect, _) =
         ui.allocate_exact_size(Vec2::new(ui.available_width(), 18.0), Sense::hover());
@@ -587,15 +578,10 @@ fn parameter_slider<P: Param>(
         Sense::click_and_drag(),
     );
     let value_range = rect.shrink2(Vec2::new(8.0, 0.0));
-    parameter_absolute(ui, &response, value_range, param, setter, inverted);
+    parameter_absolute(ui, &response, value_range, param, setter);
     let track = Rect::from_center_size(value_range.center(), Vec2::new(value_range.width(), 4.0));
     ui.painter().rect_filled(track, 2.0, palette.track);
     let normalized = param.modulated_normalized_value().clamp(0.0, 1.0);
-    let normalized = if inverted {
-        1.0 - normalized
-    } else {
-        normalized
-    };
     let x = value_range.left() + normalized * value_range.width();
     let filled = Rect::from_min_max(track.left_top(), Pos2::new(x, track.bottom()));
     ui.painter().rect_filled(filled, 2.0, palette.blue);
@@ -625,14 +611,12 @@ fn parameter_absolute<P: Param>(
     value_range: Rect,
     param: &P,
     setter: &oiko_plugin::gestures::GestureSetter<'_>,
-    inverted: bool,
 ) {
     if response.double_clicked() {
         setter.set_discrete_parameter(param, param.default_plain_value());
         return;
     }
-    let map = |value: f32| if inverted { 1.0 - value } else { value };
-    parameter_drag_mapped(
+    parameter_drag(
         ui,
         response,
         param,
@@ -641,15 +625,12 @@ fn parameter_absolute<P: Param>(
             range: value_range,
             fine_sensitivity: None,
         },
-        (map(param.unmodulated_normalized_value()), |v| {
-            param.preview_plain(map(v))
-        }),
     );
     if response.clicked()
         && let Some(pointer) = response.interact_pointer_pos()
     {
         let normalized = ((pointer.x - value_range.left()) / value_range.width()).clamp(0.0, 1.0);
-        setter.set_discrete_parameter(param, param.preview_plain(map(normalized)));
+        setter.set_discrete_parameter(param, param.preview_plain(normalized));
     }
 }
 
