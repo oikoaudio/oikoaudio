@@ -2,7 +2,7 @@
 
 [Product page](https://oikoaudio.com/weft/)
 
-> **Beta 0.5.0-beta.2.** These plugins are still in beta, so sound, controls and automation mappings may change between beta releases. Read the [release notes](../../RELEASE_NOTES.md) before updating existing projects.
+> **Beta 0.5.0-beta.3.** These plugins are still in beta, so sound, controls and automation mappings may change between beta releases. Read the [release notes](../../RELEASE_NOTES.md) before updating existing projects.
 
 **[Download Weft](https://oikoaudio.com/downloads/#weft)** for macOS, Windows, and Linux.
 
