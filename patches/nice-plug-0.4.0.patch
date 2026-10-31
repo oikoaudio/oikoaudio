@@ -64,7 +64,38 @@
                      match event.expression_id {
                          CLAP_NOTE_EXPRESSION_PRESSURE => {
                              push_event(
-@@ -3120,8 +3121,10 @@
+@@ -2842,6 +2843,7 @@
+                 }
+             };
+ 
++            let reported_size = wrapper.editor.borrow().as_ref().map(|e| e.lock().size());
+             if let Err(e) = editor_window
+                 .handle
+                 .set_parent(parent_handle, editor_window.window.borrow())
+@@ -2850,6 +2852,22 @@
+ 
+                 false
+             } else {
++                // Hosts size their frame from `get_size()` before this call, and on Windows the
++                // window learns its DPI only here. Ask the host to fit the frame when the two
++                // sizes differ.
++                let parented_size = wrapper.editor.borrow().as_ref().map(|e| e.lock().size());
++                if let (Some(size), true) = (parented_size, parented_size != reported_size)
++                    && let Some(host_gui) = wrapper.host_gui.borrow().as_ref()
++                {
++                    unsafe_clap_call! {
++                        &**host_gui=>request_resize(
++                            &*wrapper.host_callback,
++                            size.width,
++                            size.height,
++                        )
++                    };
++                }
++
+                 true
+             }
+         } else {
+@@ -3120,8 +3138,10 @@
                  let info = unsafe { &mut *info };
                  info.id = 0;
                  // NOTE: REAPER won't send us SysEx if we don't support the MIDI dialect
@@ -76,7 +107,7 @@
                  info.preferred_dialect = CLAP_NOTE_DIALECT_CLAP;
                  strlcpy(&mut info.name, "Note Input");
  
-@@ -3445,27 +3448,36 @@
+@@ -3445,27 +3465,36 @@
              );
              return false;
          }
@@ -86,14 +117,13 @@
 -            crate::nice_error!("Failed to load state: Malformed length");
 -            return false;
 -        }
--
 +        let declared_length = u64::from_le_bytes(length_bytes);
 +        // Vec byte capacities must fit in isize as well as usize.
 +        let length = match usize::try_from(declared_length) {
 +            Ok(length) if length <= isize::MAX as usize => length,
 +            _ => return false,
 +        };
-+
+ 
 +        // The prefix is untrusted. Grow only as the stream supplies data, rather than
 +        // reserving its entire claimed length before discovering a truncated stream.
 +        // This bounds each read, not the total state size (samplers may have large states).
