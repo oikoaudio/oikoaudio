@@ -197,7 +197,7 @@
   "vendor/nice-plug/src/wrapper/vst3/param_units.rs": "4e20083b38660d785285a8a43407955b793b3bcec25d19679c45d68185e8cfcd",
   "vendor/nice-plug/src/wrapper/vst3/subcategories.rs": "304177b0c1bf3ffe0efdf9bf466550097128e994f746e2a80f2b394fc9a3d9c5",
   "vendor/nice-plug/src/wrapper/vst3/util.rs": "4448b6c26a2d26743fe524313fd9e52dc06aa9fb8fd8636a8018af83795ce326",
-  "vendor/nice-plug/src/wrapper/vst3/view.rs": "e94ec1e6fe2b68fd3e5611e39a6628e5ab091881be64c00eaf8f8686c7ec1a3d",
+  "vendor/nice-plug/src/wrapper/vst3/view.rs": "4634f249f4aa2cb0df5f0f90cdd311f8ca22c1489eed1817e3c3b08c3c679da8",
   "vendor/nice-plug/src/wrapper/vst3/wrapper.rs": "4ce13d1d45f61dd6308048a895fcedb10bffeba3c7c015e6c48e5691aa041de5",
   "vendor/nice-plug/tests/clap_event_timing.rs": "0de2be2677792a475ffc64bf9f425c303ded9c580bc2731d9b452a2deba2accd",
   "vendor/nice-plug/tests/clap_state_stream.rs": "2dbb9c992e1fb0c63d38fc71db076165dfeb184a6c5b05a73cad7ae2f622e766",

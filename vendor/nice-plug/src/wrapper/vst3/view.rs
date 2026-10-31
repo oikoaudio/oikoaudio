@@ -465,8 +465,9 @@ impl<P: Vst3Plugin> IPlugViewTrait for WrapperView<P> {
             return kResultFalse;
         };
 
-        let mut window = inner.editor_window.borrow_mut();
-        if window.is_none() {
+        // Creating the window and resizing the frame re-enter this view through the host, such as
+        // `resizeView()` calling `onSize()`, so no borrow of `editor_window` may span those calls.
+        if inner.editor_window.borrow().is_none() {
             let parent_handle = if unsafe { fid_matches(type_, kPlatformTypeX11EmbedWindowID) } {
                 #[allow(clippy::unnecessary_cast)]
                 let w = parent as usize as c_ulong;
@@ -571,7 +572,7 @@ impl<P: Vst3Plugin> IPlugViewTrait for WrapperView<P> {
             match spawned {
                 Ok(editor_window) => match editor_window.handle.show(&editor_window.window) {
                     Ok(()) => {
-                        *window = Some(Fragile::new(editor_window));
+                        *inner.editor_window.borrow_mut() = Some(Fragile::new(editor_window));
                         inner.is_editor_open.store(true, Ordering::SeqCst);
 
                         // The host sized its frame from `getSize()` before the window existed,
