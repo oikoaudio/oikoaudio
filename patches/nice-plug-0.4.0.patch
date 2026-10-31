@@ -319,7 +319,19 @@
          }
 --- a/src/wrapper/vst3/view.rs
 +++ b/src/wrapper/vst3/view.rs
-@@ -556,7 +556,9 @@
+@@ -465,8 +465,9 @@
+             return kResultFalse;
+         };
+ 
+-        let mut window = inner.editor_window.borrow_mut();
+-        if window.is_none() {
++        // Creating the window and resizing the frame re-enter this view through the host, such as
++        // `resizeView()` calling `onSize()`, so no borrow of `editor_window` may span those calls.
++        if inner.editor_window.borrow().is_none() {
+             let parent_handle = if unsafe { fid_matches(type_, kPlatformTypeX11EmbedWindowID) } {
+                 #[allow(clippy::unnecessary_cast)]
+                 let w = parent as usize as c_ulong;
+@@ -556,7 +557,9 @@
  
              let fallback_scale_factor = self.fallback_scale_factor.load().map(|s| s as f64);
  
@@ -330,7 +342,7 @@
                  Some(parent_handle),
                  false,
                  fallback_scale_factor,
-@@ -565,11 +567,31 @@
+@@ -565,11 +568,31 @@
                      callbacks,
                      main_thread_caller,
                  }),
@@ -339,7 +351,8 @@
 +            match spawned {
                  Ok(editor_window) => match editor_window.handle.show(&editor_window.window) {
                      Ok(()) => {
-                         *window = Some(Fragile::new(editor_window));
+-                        *window = Some(Fragile::new(editor_window));
++                        *inner.editor_window.borrow_mut() = Some(Fragile::new(editor_window));
                          inner.is_editor_open.store(true, Ordering::SeqCst);
 +
 +                        // The host sized its frame from `getSize()` before the window existed,
