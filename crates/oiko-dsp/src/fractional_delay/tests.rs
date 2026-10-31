@@ -273,6 +273,35 @@ fn rate_read_returns_whole_samples_at_rate_one_and_below() {
 }
 
 #[test]
+fn rate_read_keeps_a_constant_at_every_place_and_rate() {
+    let sound = vec![1.0_f32; 1 << 14];
+    for reader in [live_reader(), best_reader()] {
+        for rate in [0.5, 1.0, 1.027, 1.03, 1.2, 2.0, 7.3, 16.0] {
+            for place in 0..500 {
+                let position = 8192.0 + place as f64 * 0.618_033_988_75;
+                let read = reader.sample(&Samples(&sound), position, rate);
+                assert_eq!(read, 1.0, "{rate} {position}");
+            }
+        }
+    }
+}
+
+#[test]
+fn rate_read_follows_a_ramp_at_every_place_and_rate() {
+    const SLOPE: f64 = 1.0 / 8192.0;
+    let sound: Vec<f32> = (0..1 << 14).map(|n| (n as f64 * SLOPE) as f32).collect();
+    let reader = live_reader();
+    for rate in [0.5, 1.0, 1.027, 1.03, 1.2, 2.0, 7.3, 16.0] {
+        for place in 0..500 {
+            let position = 8192.0 + place as f64 * 0.618_033_988_75;
+            let read = f64::from(reader.sample(&Samples(&sound), position, rate));
+            let error = (read - position * SLOPE).abs();
+            assert!(error < 1.5 * f64::from(f32::EPSILON), "{rate} {position}");
+        }
+    }
+}
+
+#[test]
 fn rate_read_stays_within_its_reach() {
     let reader = live_reader();
     for rate in [0.5, 1.03, 3.0, 16.0, 40.0, f64::NAN] {
