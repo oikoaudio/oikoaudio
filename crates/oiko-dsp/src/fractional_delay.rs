@@ -607,6 +607,12 @@ impl WindowedSincF32 {
         assert!(passband > 0.0 && passband <= 1.0);
         Self::new(taps, phases, passband / max_rate, beta)
     }
+
+    /// Input samples a read touches. They run from `taps / 2 - 1` before the
+    /// read position's whole sample to `taps / 2` after it.
+    pub fn taps(&self) -> usize {
+        self.taps
+    }
 }
 
 impl KernelF32 for WindowedSincF32 {
@@ -622,7 +628,8 @@ impl KernelF32 for WindowedSincF32 {
         let mut sum = 0.0_f32;
         for k in 0..self.taps {
             let coefficient = row0[k] + blend * (row1[k] - row0[k]);
-            sum = source.at_f32(start + k as i64).mul_add(coefficient, sum);
+            // A plain sum: without FMA in the target, `mul_add` is a libm call per tap.
+            sum += source.at_f32(start + k as i64) * coefficient;
         }
         sum
     }
@@ -694,8 +701,12 @@ impl SincBankF32 {
         }
     }
 
+    /// Reads `source` at `position` for a read head moving at `requested_rate`
+    /// source samples per output sample. Two neighbouring rate tables blend, so
+    /// the result moves continuously with the rate. The rate is clamped to 1
+    /// through the bank's maximum rate. Allocates nothing and takes no lock.
     #[inline]
-    fn sample<S: SampleSourceF32>(
+    pub fn sample<S: SampleSourceF32>(
         &self,
         source: &S,
         position: f64,
@@ -731,6 +742,150 @@ impl SincBankF32 {
         let a = Self::sample_set(safe_set, source, position, quality);
         let b = Self::sample_set(tighter_set, source, position, quality);
         a + (b - a) * blend.clamp(0.0, 1.0)
+    }
+}
+
+/// One table step in `RateSincF32`'s 32.32 fixed-point table position, which spares
+/// the per-tap loop a float-to-integer conversion.
+const FRACTION_SCALE: f64 = (1_u64 << 32) as f64;
+
+/// Band-limited read at any rate from one prebuilt Kaiser-windowed sinc table.
+///
+/// A read stretches the table in time by the rate. The tap count and the cutoff
+/// follow the rate continuously, so a moving rate has no table boundaries to
+/// cross, and the stopband's edge sits on the output's Nyquist frequency. Reads
+/// are pure functions of the source, position and rate. They allocate nothing
+/// and take no lock. Construction allocates, so build the table outside the
+/// audio callback.
+pub struct RateSincF32 {
+    half_taps: f64,
+    phases: f64,
+    passband: f64,
+    max_rate: f64,
+    table: Vec<f32>,
+}
+
+impl RateSincF32 {
+    /// Rate at which the cutoff reaches `passband / rate`. From rate 1 up to here
+    /// it falls from the full band, which keeps the kernel continuous through
+    /// rate 1 while rate 1 itself stays exact. Input near its own Nyquist
+    /// frequency folds back on the way, into the top 6 % of the output band.
+    const SETTLED_RATE: f64 = 1.059_463_094_359_295_3;
+
+    /// Builds the table.
+    ///
+    /// `taps` is the kernel's length at rate 1 and must be even. A read at a
+    /// higher rate takes `taps * rate / passband` samples. `phases` is the
+    /// table's steps per sample, which sets the error of its linear
+    /// interpolation. `max_rate` caps the work of a read. `passband` places the
+    /// cutoff, as a fraction of the output's Nyquist frequency, and belongs at
+    /// the value that puts the stopband's edge on that frequency for these
+    /// `taps` and `beta`. `beta` is the Kaiser window's shape.
+    pub fn new(taps: usize, phases: usize, max_rate: f64, passband: f64, beta: f64) -> Self {
+        assert!(taps >= 4 && taps.is_multiple_of(2));
+        assert!(phases >= 2);
+        assert!(max_rate.is_finite() && max_rate >= 1.0);
+        assert!(passband > 0.0 && passband <= 1.0);
+        let half_taps = taps as f64 / 2.0;
+        let denom = bessel_i0(beta);
+        // The extra entry lets interpolation at the table's last point read a neighbour.
+        let table = (0..=taps * phases + 1)
+            .map(|index| {
+                let lag = index as f64 / phases as f64 - half_taps;
+                let normalized = (lag / half_taps).clamp(-1.0, 1.0);
+                let window = bessel_i0(beta * (1.0 - normalized * normalized).sqrt()) / denom;
+                (sinc(lag) * window) as f32
+            })
+            .collect();
+        Self {
+            half_taps,
+            phases: phases as f64,
+            passband,
+            max_rate,
+            table,
+        }
+    }
+
+    /// Input samples to each side of the position that a read at `rate` can
+    /// touch.
+    pub fn reach(&self, rate: f64) -> usize {
+        (self.half_taps / self.cutoff(rate)).ceil() as usize
+    }
+
+    /// Rate above which a read stops following the requested rate.
+    pub fn max_rate(&self) -> f64 {
+        self.max_rate
+    }
+
+    /// Reads `source` at `position` for a read head moving at `rate` source
+    /// samples per output sample. At rate 1 or below the full band passes and a
+    /// whole `position` returns exactly that sample. A rate above the maximum,
+    /// or NaN, reads at the maximum.
+    #[inline]
+    pub fn sample<S: SampleSourceF32>(&self, source: &S, position: f64, rate: f64) -> f32 {
+        let [output] = self.fold(position, rate, |index| [source.at_f32(index)]);
+        output
+    }
+
+    /// `sample` for two channels, sharing one set of weights.
+    #[inline]
+    pub fn sample_stereo<L: SampleSourceF32, R: SampleSourceF32>(
+        &self,
+        left: &L,
+        right: &R,
+        position: f64,
+        rate: f64,
+    ) -> [f32; 2] {
+        self.fold(position, rate, |index| {
+            [left.at_f32(index), right.at_f32(index)]
+        })
+    }
+
+    #[inline]
+    fn cutoff(&self, rate: f64) -> f64 {
+        let rate = rate.min(self.max_rate);
+        if rate >= Self::SETTLED_RATE {
+            self.passband / rate
+        } else if rate > 1.0 {
+            let settled = self.passband / Self::SETTLED_RATE;
+            1.0 + (settled - 1.0) * (rate - 1.0) / (Self::SETTLED_RATE - 1.0)
+        } else {
+            1.0
+        }
+    }
+
+    #[inline]
+    fn fold<const CHANNELS: usize>(
+        &self,
+        position: f64,
+        rate: f64,
+        frame: impl Fn(i64) -> [f32; CHANNELS],
+    ) -> [f32; CHANNELS] {
+        let cutoff = self.cutoff(rate);
+        if cutoff >= 1.0 && position.fract() == 0.0 {
+            return frame(position as i64);
+        }
+        let support = self.half_taps / cutoff;
+        let first = (position - support).ceil();
+        let last = (position + support).floor();
+        let step = (cutoff * self.phases * FRACTION_SCALE) as u64;
+        let start = ((first - position) * cutoff + self.half_taps) * self.phases;
+        let mut table_position = (start * FRACTION_SCALE) as u64;
+        let last_entry = self.table.len() - 2;
+        // `f64`: rounding an `f32` sum over thousands of taps rises above a -140 dB stopband.
+        let mut sums = [0.0_f64; CHANNELS];
+        for index in first as i64..=last as i64 {
+            let entry = ((table_position >> 32) as usize).min(last_entry);
+            let blend = table_position as u32 as f32 / FRACTION_SCALE as f32;
+            let (a, b) = (self.table[entry], self.table[entry + 1]);
+            let weight = f64::from(a + blend * (b - a));
+            let samples = frame(index);
+            for (sum, sample) in sums.iter_mut().zip(samples) {
+                *sum += weight * f64::from(sample);
+            }
+            table_position = table_position.wrapping_add(step);
+        }
+        sums.map(|sum| (sum * cutoff) as f32)
     }
 }
 

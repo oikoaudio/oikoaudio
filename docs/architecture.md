@@ -37,7 +37,7 @@ flowchart LR
 
 An arrow means "depends on". DSP and core crates have no NicePlug, egui or window dependencies.
 
-`oiko-dsp::fractional_delay` contains Wow's fractional delay readers, interpolation kernels and oversampling. `wow-dsp::modulation` contains Wow's modulation, which is its two oscillators, seeded Drift and stereo delay offsets. `wow-plugin` depends on both crates. `wow-dsp` has no dependencies. Consumers import the shared gain, pitch and delay helpers from `oiko-dsp` itself.
+`oiko-dsp::fractional_delay` contains Wow's fractional delay readers, interpolation kernels and oversampling, and `RateSincF32`, a band-limited read at a position for any rate. `wow-dsp::modulation` contains Wow's modulation, which is its two oscillators, seeded Drift and stereo delay offsets. `wow-plugin` depends on both crates. `wow-dsp` has no dependencies. Consumers import the shared gain, pitch and delay helpers from `oiko-dsp` itself.
 
 Weft's `spectral-dsp` contains note masks, the particle engine, spectral motion and synthesis-window processing. `spectral-plugin` contains the NicePlug STFT buffer adapter and translates host events. Its `particle_adapter` module maps host notes, transport and parameters into the core particle engine. In `spectral-plugin`, `parameters` defines the host parameters, `state` holds the persisted fields and validates state, and `curve` calculates curve transforms. At activation, Weft prepares every FFT plan with its frequency tables, its analysis and synthesis tables, and FFT scratch storage sized by the realfft API. A resolution change selects a prepared plan and changes the active length of the preallocated working buffers.
 
