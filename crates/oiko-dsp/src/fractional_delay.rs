@@ -6,6 +6,10 @@
 use std::f64::consts::PI;
 use std::sync::Arc;
 
+mod minimum_phase;
+
+pub use minimum_phase::{MinimumPhaseRateSincF32, minimum_phase};
+
 /// A random-access interpolation kernel. `position` is in absolute samples.
 pub trait Kernel {
     fn sample<S: SampleSource>(&self, source: &S, position: f64) -> f64;
@@ -786,19 +790,12 @@ impl RateSincF32 {
         assert!(phases >= 2);
         assert!(max_rate.is_finite() && max_rate >= 1.0);
         assert!(passband > 0.0 && passband <= 1.0);
-        let half_taps = taps as f64 / 2.0;
-        let denom = bessel_i0(beta);
         // The extra entry lets interpolation at the table's last point read a neighbour.
-        let table = (0..=taps * phases + 1)
-            .map(|index| {
-                let lag = index as f64 / phases as f64 - half_taps;
-                let normalized = (lag / half_taps).clamp(-1.0, 1.0);
-                let window = bessel_i0(beta * (1.0 - normalized * normalized).sqrt()) / denom;
-                (sinc(lag) * window) as f32
-            })
+        let table = kaiser_sinc(taps, phases, taps * phases + 2, beta)
+            .map(|entry| entry as f32)
             .collect();
         Self {
-            half_taps,
+            half_taps: taps as f64 / 2.0,
             phases: phases as f64,
             passband,
             max_rate,
@@ -842,17 +839,23 @@ impl RateSincF32 {
         })
     }
 
+    /// The cutoff of a read at `rate`, as a fraction of the source's Nyquist frequency.
     #[inline]
-    fn cutoff(&self, rate: f64) -> f64 {
-        let rate = rate.min(self.max_rate);
+    fn cutoff_curve(rate: f64, max_rate: f64, passband: f64) -> f64 {
+        let rate = rate.min(max_rate);
         if rate >= Self::SETTLED_RATE {
-            self.passband / rate
+            passband / rate
         } else if rate > 1.0 {
-            let settled = self.passband / Self::SETTLED_RATE;
+            let settled = passband / Self::SETTLED_RATE;
             1.0 + (settled - 1.0) * (rate - 1.0) / (Self::SETTLED_RATE - 1.0)
         } else {
             1.0
         }
+    }
+
+    #[inline]
+    fn cutoff(&self, rate: f64) -> f64 {
+        Self::cutoff_curve(rate, self.max_rate, self.passband)
     }
 
     #[inline]
@@ -893,6 +896,19 @@ impl RateSincF32 {
         let gain = 1.0 / total_weight;
         sums.map(|sum| (sum * gain) as f32)
     }
+}
+
+/// The first `entries` entries of a Kaiser-windowed sinc `taps` samples long, at `phases` entries
+/// per sample, from its start.
+fn kaiser_sinc(taps: usize, phases: usize, entries: usize, beta: f64) -> impl Iterator<Item = f64> {
+    let half_taps = taps as f64 / 2.0;
+    let denom = bessel_i0(beta);
+    (0..entries).map(move |index| {
+        let lag = index as f64 / phases as f64 - half_taps;
+        let normalized = (lag / half_taps).clamp(-1.0, 1.0);
+        let window = bessel_i0(beta * (1.0 - normalized * normalized).sqrt()) / denom;
+        sinc(lag) * window
+    })
 }
 
 #[inline]
