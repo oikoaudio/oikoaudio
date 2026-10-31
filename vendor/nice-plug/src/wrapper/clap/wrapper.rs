@@ -2843,6 +2843,7 @@ impl<P: ClapPlugin> Wrapper<P> {
                 }
             };
 
+            let reported_size = wrapper.editor.borrow().as_ref().map(|e| e.lock().size());
             if let Err(e) = editor_window
                 .handle
                 .set_parent(parent_handle, editor_window.window.borrow())
@@ -2851,6 +2852,22 @@ impl<P: ClapPlugin> Wrapper<P> {
 
                 false
             } else {
+                // Hosts size their frame from `get_size()` before this call, and on Windows the
+                // window learns its DPI only here. Ask the host to fit the frame when the two
+                // sizes differ.
+                let parented_size = wrapper.editor.borrow().as_ref().map(|e| e.lock().size());
+                if let (Some(size), true) = (parented_size, parented_size != reported_size)
+                    && let Some(host_gui) = wrapper.host_gui.borrow().as_ref()
+                {
+                    unsafe_clap_call! {
+                        &**host_gui=>request_resize(
+                            &*wrapper.host_callback,
+                            size.width,
+                            size.height,
+                        )
+                    };
+                }
+
                 true
             }
         } else {
