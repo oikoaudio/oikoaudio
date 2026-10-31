@@ -819,8 +819,9 @@ impl RateSincF32 {
 
     /// Reads `source` at `position` for a read head moving at `rate` source
     /// samples per output sample. At rate 1 or below the full band passes and a
-    /// whole `position` returns exactly that sample. A rate above the maximum,
-    /// or NaN, reads at the maximum.
+    /// whole `position` returns exactly that sample. A constant source reads
+    /// back exactly at every position and rate. A rate above the maximum, or
+    /// NaN, reads at the maximum.
     #[inline]
     pub fn sample<S: SampleSourceF32>(&self, source: &S, position: f64, rate: f64) -> f32 {
         let [output] = self.fold(position, rate, |index| [source.at_f32(index)]);
@@ -874,18 +875,23 @@ impl RateSincF32 {
         let last_entry = self.table.len() - 2;
         // `f64`: rounding an `f32` sum over thousands of taps rises above a -140 dB stopband.
         let mut sums = [0.0_f64; CHANNELS];
+        let mut total_weight = 0.0_f64;
         for index in first as i64..=last as i64 {
             let entry = ((table_position >> 32) as usize).min(last_entry);
             let blend = table_position as u32 as f32 / FRACTION_SCALE as f32;
             let (a, b) = (self.table[entry], self.table[entry + 1]);
             let weight = f64::from(a + blend * (b - a));
+            total_weight += weight;
             let samples = frame(index);
             for (sum, sample) in sums.iter_mut().zip(samples) {
                 *sum += weight * f64::from(sample);
             }
             table_position = table_position.wrapping_add(step);
         }
-        sums.map(|sum| (sum * cutoff) as f32)
+        // The stretch puts the taps anywhere on the table, so its entries cannot be scaled ahead
+        // of time to sum to one at every place and rate. Each read divides by its own total.
+        let gain = 1.0 / total_weight;
+        sums.map(|sum| (sum * gain) as f32)
     }
 }
 
