@@ -211,16 +211,7 @@ impl<A: NiceEguiApp> Editor for EguiEditor<A> {
             host,
         )?;
 
-        // The window reports its first resize only after the size changes, but hosts query the
-        // editor size as soon as the window exists. Without this, a window created at a system
-        // scale other than 1.0 reports its logical size as native pixels.
-        let created_size = window.size();
-        let total_scale_factor = created_size.scale_factor * zoom_factor as f64;
-        egui_state.store_window_size(baseview::WindowSize {
-            physical: created_size.physical,
-            logical: created_size.physical.to_logical(total_scale_factor),
-            scale_factor: total_scale_factor,
-        });
+        record_window_size(&egui_state, &window);
 
         self.egui_state.open.store(true, Ordering::Release);
 
@@ -251,6 +242,21 @@ impl<A: NiceEguiApp> Editor for EguiEditor<A> {
     }
 }
 
+/// Record `window`'s size and system scale in `egui_state`.
+///
+/// The window reports its first resize only after the size changes, but hosts query the editor size
+/// as soon as the window exists. Without this, a window created at a system scale other than 1.0
+/// reports its logical size as native pixels.
+fn record_window_size(egui_state: &EguiEditorState, window: &baseview::Window) {
+    let size = window.size();
+    let total_scale_factor = size.scale_factor * egui_state.zoom_factor.load() as f64;
+    egui_state.store_window_size(baseview::WindowSize {
+        physical: size.physical,
+        logical: size.physical.to_logical(total_scale_factor),
+        scale_factor: total_scale_factor,
+    });
+}
+
 /// A handle to a spawned instance of an [`EguiEditor`].
 pub struct EguiEditorHandle {
     egui_state: Arc<EguiEditorState>,
@@ -271,7 +277,12 @@ impl EditorHandle for EguiEditorHandle {
         parent: ParentWindowHandle,
         window: &Self::Window,
     ) -> Result<(), Self::Error> {
-        window.set_parent(&parent)
+        window.set_parent(&parent)?;
+        // A Win32 window spawned without a parent exists and knows its DPI only from here on. X11
+        // creates the window at spawn and reports later changes through `resized()`.
+        #[cfg(target_os = "windows")]
+        record_window_size(&self.egui_state, window);
+        Ok(())
     }
 
     fn show(&self, window: &Self::Window) -> Result<(), Self::Error> {
