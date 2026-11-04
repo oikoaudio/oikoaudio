@@ -25,6 +25,10 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          # Pull requests restore the cache that main saves, but do not save their own.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Install Linux GUI dependencies
         if: runner.os == 'Linux'
         run: |

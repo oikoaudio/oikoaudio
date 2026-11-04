@@ -16,10 +16,10 @@ The shared build tag must match the workspace version exactly. During publicatio
 
 | Event | Result |
 | --- | --- |
-| Push to `main` | Workspace checks, as for a pull request |
+| Push to `main` | Workspace checks, as for a pull request. This run also saves the Rust build cache that pull requests restore |
 | Push to any other branch | No workflow runs |
 | Pull request | Workspace formatting, Clippy, dependency checks, and tests on Linux, macOS, and Windows |
-| Shared `v<version>` tag push | Tests and bundles all products once per platform, then publishes each product's archives after every platform succeeds and starts the website deployment when configured |
+| Shared `v<version>` tag push | Checks that the Workspace checks passed on `main` for the tagged commit, bundles all products once per platform, then publishes each product's archives after every platform succeeds and starts the website deployment when configured |
 | Product tag push | No build runs |
 | Manual workspace check | Runs the same checks as a pull request |
 | Manual release workflow | Builds downloadable test archives without publishing, including when run against a tag |
@@ -28,9 +28,9 @@ The manual release workflow builds for all platforms or for one of Linux, Window
 
 ## Preparing a release
 
-Update the workspace version in the root `Cargo.toml` and update the lockfile. Record changes and compatibility warnings in the root `RELEASE_NOTES.md`, which becomes the body of all three product releases. Test the bundles in a host. Commit those changes, then create and push the matching `v<version>` tag. Do not push the three product tags yourself. They do not start builds, and the workflow creates them.
+Update the workspace version in the root `Cargo.toml` and update the lockfile. Record changes and compatibility warnings in the root `RELEASE_NOTES.md`, which becomes the body of all three product releases. Test the bundles in a host. Commit those changes to `main`, wait for its Workspace checks to pass, then create and push the matching `v<version>` tag on that commit. Do not push the three product tags yourself. They do not start builds, and the workflow creates them.
 
-Builds use the committed lockfile. The workflow runs the release-tooling tests and the notice-byte checks before it compiles anything. Each platform job tests the plugin packages and the extra test packages listed in `products.toml` in one `cargo test` run, then builds all three plugins with one `cargo xtask` bundle command. The full workspace check also tests each plugin on its own, which catches failures that feature unification hides. The build script checks that every macOS product bundle contains both architectures.
+Builds use the committed lockfile. The workflow runs the release-tooling tests and the notice-byte checks before it compiles anything. The release workflow does not run the Rust tests again. Before any platform job starts, it requires a successful Workspace checks run from a push to `main` at the tagged commit. That run already tested the workspace, each plugin on its own and the patched dependencies on every platform. If the run is still going, the release stops, and you can rerun it once the checks pass. If they failed, or the commit was never checked on `main`, use a new version on a checked commit. Each platform job then builds all three plugins with one `cargo xtask` bundle command. The build script checks that every macOS product bundle contains both architectures.
 
 Before it changes anything on GitHub, the publication job checks all nine archives and the existing product tags. Each product's release stays a draft until all its uploads finish. A rerun of a failed publication job finishes the drafts and skips products already published with the exact same revision and asset checksums. The workflow never overwrites a published release, so changed assets need a new version. If only publication failed, rerun the publication job and leave the successful platform jobs alone.
 

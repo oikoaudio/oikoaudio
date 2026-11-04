@@ -160,6 +160,29 @@ class WorkspaceReleaseTests(unittest.TestCase):
                 workspace_release.publish()
             self.assertEqual(run.call_count, 1)
 
+    def test_preflight_requires_passing_workspace_checks_on_main(self):
+        plan = [(p, f"{p.key}/v{p.version}", False, False) for p in self.products.values()]
+        cases = {
+            "passed": ([dict(status="completed", conclusion="failure"),
+                        dict(status="completed", conclusion="success")], None),
+            "running": ([dict(status="in_progress", conclusion=None)], "still running"),
+            "failed": ([dict(status="completed", conclusion="failure")], "did not pass"),
+            "missing": ([], "No Workspace checks"),
+        }
+        for name, (runs, message) in cases.items():
+            with self.subTest(name), patch.dict(os.environ, self.env), \
+                    patch.object(workspace_release, "publication_plan", return_value=plan), \
+                    patch.object(release, "run", return_value=json.dumps([dict(workflow_runs=runs)])) as run:
+                if message is None:
+                    workspace_release.preflight()
+                else:
+                    with self.assertRaisesRegex(ValueError, message):
+                        workspace_release.preflight()
+                endpoint = run.call_args.args[2]
+                self.assertIn(f"head_sha={self.revision}", endpoint)
+                self.assertIn("event=push", endpoint)
+                self.assertIn("branch=main", endpoint)
+
     def test_preflight_stops_a_build_when_every_product_is_already_published(self):
         plan = [(p, f"{p.key}/v{p.version}", True, True) for p in self.products.values()]
         with patch.object(workspace_release, "publication_plan", return_value=plan):
