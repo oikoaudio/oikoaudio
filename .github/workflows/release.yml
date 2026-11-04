@@ -21,6 +21,9 @@ concurrency:
 jobs:
   configure:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
     outputs:
       matrix: ${{ steps.config.outputs.matrix }}
     steps:
@@ -30,7 +33,7 @@ jobs:
           python-version: "3.12"
       - name: Check release tooling and notice bytes before building
         run: python -m unittest discover -s scripts/tests
-      - name: Check shared version and existing release tags
+      - name: Check shared version, existing release tags and the main Workspace checks
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -63,8 +66,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes libx11-dev libwayland-dev libxkbcommon-dev libxcursor-dev libxcb-dri2-0-dev libxcb-icccm4-dev libx11-xcb-dev mesa-common-dev libgl1-mesa-dev libglu1-mesa-dev
-      - name: Test plugins and cores
-        run: python scripts/workspace_release.py test
       - name: Build all CLAP and VST3 bundles together
         run: python scripts/workspace_release.py build --platform "${{ runner.os }}"
       - name: Package separate product archives

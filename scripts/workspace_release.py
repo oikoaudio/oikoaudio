@@ -56,10 +56,28 @@ def publication_plan():
     return plan
 
 
+def check_workspace_checks_passed():
+    """Require a green main push run of ci.yml for this commit, so the release build need not test again."""
+    repo = os.environ["GITHUB_REPOSITORY"]
+    revision = os.environ["GITHUB_SHA"]
+    pages = json.loads(release.run("gh", "api", f"repos/{repo}/actions/workflows/ci.yml/runs"
+                                   f"?head_sha={revision}&event=push&branch=main&per_page=100",
+                                   "--paginate", "--slurp", capture=True))
+    runs = [run for page in pages for run in page["workflow_runs"]]
+    if any(run["conclusion"] == "success" for run in runs):
+        return
+    if any(run["status"] != "completed" for run in runs):
+        raise ValueError(f"Workspace checks on main are still running for {revision}; rerun this release when they pass")
+    if runs:
+        raise ValueError(f"Workspace checks on main did not pass for {revision}; fix main and use a new version")
+    raise ValueError(f"No Workspace checks run on main for {revision}; tag a commit that main has checked")
+
+
 def preflight():
     plan = publication_plan()
     if all(published for _, _, _, published in plan):
         raise ValueError("All product releases are already published; no build is needed")
+    check_workspace_checks_passed()
 
 
 def publish():
