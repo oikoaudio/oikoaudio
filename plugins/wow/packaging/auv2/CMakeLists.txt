@@ -22,7 +22,7 @@ set(CLAP_WRAPPER_COPY_AFTER_BUILD FALSE CACHE BOOL "" FORCE)
 FetchContent_Declare(
     clap_wrapper
     GIT_REPOSITORY https://github.com/free-audio/clap-wrapper.git
-    GIT_TAG 1cca996e96f29ab2be7ae9f8cfe532bbc92e1dd6 # v0.16.0
+    GIT_TAG 806bba0a5f792e3966b99c1561ab9952d3316d7c # v0.16.0
 )
 FetchContent_MakeAvailable(clap_wrapper)
 
