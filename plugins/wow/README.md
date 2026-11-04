@@ -2,7 +2,7 @@
 
 [Product page](https://oikoaudio.com/wow/)
 
-> **Beta 0.5.0-beta.3.** These plugins are still in beta, so sound, controls and automation mappings may change between beta releases. Read the [release notes](../../RELEASE_NOTES.md) before updating existing projects.
+> **Version 0.5.1, still in beta.** These plugins are still in beta, so sound, controls and automation mappings may change between beta releases. Read the [release notes](../../RELEASE_NOTES.md) before updating existing projects.
 
 **[Download Wow](https://oikoaudio.com/downloads/#wow)** for macOS, Windows, and Linux.
 

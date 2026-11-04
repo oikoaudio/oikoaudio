@@ -1,4 +1,5 @@
 import os
+import dataclasses
 import json
 import hashlib
 from pathlib import Path
@@ -147,8 +148,10 @@ class ReleaseTests(unittest.TestCase):
                              {"LICENSE-MIT", "LICENSE-APACHE", "licenses", "dependency-licenses.json"})
             self.assertEqual(output.read_bytes(), b"archive")
 
-    def publication_fixture(self, directory):
+    def publication_fixture(self, directory, version=None):
         product = self.products["wow"]
+        if version is not None:
+            product = dataclasses.replace(product, version=version)
         dist = directory / "dist"
         dist.mkdir()
         archives = [dist / row["archive"] for row in release.matrix(product)["include"]]
@@ -160,10 +163,12 @@ class ReleaseTests(unittest.TestCase):
         return product, dist, archives, env
 
     def test_publication_uploads_complete_assets_before_publishing_a_draft(self):
-        for existing_draft in (False, True):
-            with self.subTest(existing_draft=existing_draft), tempfile.TemporaryDirectory() as directory:
+        cases = [(draft, version, prerelease) for draft in (False, True)
+                 for version, prerelease in (("1.2.3-beta.1", "true"), ("1.2.3", "false"))]
+        for existing_draft, version, prerelease in cases:
+            with self.subTest(existing_draft=existing_draft, version=version), tempfile.TemporaryDirectory() as directory:
                 directory = Path(directory)
-                product, dist, archives, env = self.publication_fixture(directory)
+                product, dist, archives, env = self.publication_fixture(directory, version)
                 pages = [[{"tag_name": env["GITHUB_REF_NAME"], "draft": True}]] if existing_draft else [[]]
                 with patch.object(release, "ROOT", directory), patch.dict(os.environ, env), patch.object(release, "run", return_value=json.dumps(pages)) as run:
                     release.publish(product)
@@ -185,7 +190,7 @@ class ReleaseTests(unittest.TestCase):
                     self.assertLess(operations.index(creates[0]), operations.index(upload))
                 self.assertEqual(operations[-1][:3], ("gh", "release", "edit"))
                 self.assertIn("--draft=false", operations[-1])
-                self.assertIn("--prerelease=true", operations[-1])
+                self.assertIn(f"--prerelease={prerelease}", operations[-1])
                 manifest = json.loads((dist / "release.json").read_text())
                 self.assertEqual(manifest["source_revision"], env["GITHUB_SHA"])
                 self.assertEqual({file["name"] for file in manifest["files"]}, {a.name for a in archives})
