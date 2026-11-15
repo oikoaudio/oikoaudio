@@ -25,12 +25,12 @@ keyboard-types = "0.8.3"
 unsafe_op_in_unsafe_fn = "allow"
 
 [dev-dependencies]
-libloading = "0.8"
+libloading = "0.9"
 clap-sys = "0.5.0"
 png = "0.18"
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
-x11rb = "0.13"
+x11rb = "0.14"
 
 [package.metadata.oiko]
 role = "plugin"
