@@ -9,7 +9,7 @@ publish = false
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
-libloading = "0.8"
+libloading = "0.9"
 
 oiko-tuning.workspace = true
 
